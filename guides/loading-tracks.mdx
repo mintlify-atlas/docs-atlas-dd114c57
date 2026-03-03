@@ -1,0 +1,371 @@
+---
+title: 'Loading Tracks'
+description: 'Learn how to search for and load tracks from various sources'
+icon: 'magnifying-glass'
+---
+
+This guide covers how to load tracks from URLs, search queries, and playlists using DisGoLink.
+
+## Loading Methods
+
+DisGoLink provides two methods for loading tracks:
+
+- **`LoadTracks()`**: Returns a `LoadResult` that you handle manually
+- **`LoadTracksHandler()`**: Uses a handler interface for cleaner result processing
+
+## Using LoadTracks()
+
+<Steps>
+  <Step title="Load from identifier">
+    Load tracks using a URL or search query:
+
+    ```go
+    ctx := context.Background()
+    node := lavalinkClient.BestNode()
+
+    // Load from URL
+    result, err := node.LoadTracks(ctx, "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+    if err != nil {
+        log.Printf("Failed to load track: %v", err)
+        return
+    }
+    ```
+  </Step>
+
+  <Step title="Handle the result">
+    Check the `LoadType` and handle each case:
+
+    ```go
+    switch result.LoadType {
+    case lavalink.LoadTypeTrack:
+        track := result.Data.(lavalink.Track)
+        log.Printf("Loaded track: %s", track.Info.Title)
+
+    case lavalink.LoadTypePlaylist:
+        playlist := result.Data.(lavalink.Playlist)
+        log.Printf("Loaded playlist: %s with %d tracks",
+            playlist.Info.Name, len(playlist.Tracks))
+
+    case lavalink.LoadTypeSearch:
+        tracks := result.Data.(lavalink.Search)
+        log.Printf("Found %d search results", len(tracks))
+
+    case lavalink.LoadTypeEmpty:
+        log.Println("No results found")
+
+    case lavalink.LoadTypeError:
+        exception := result.Data.(lavalink.Exception)
+        log.Printf("Load failed: %s", exception.Message)
+    }
+    ```
+  </Step>
+</Steps>
+
+## Using LoadTracksHandler()
+
+The handler interface provides a cleaner way to handle different result types:
+
+```go
+node.LoadTracksHandler(ctx, identifier, disgolink.NewResultHandler(
+    // Track loaded
+    func(track lavalink.Track) {
+        log.Printf("Loaded: %s", track.Info.Title)
+    },
+    // Playlist loaded
+    func(playlist lavalink.Playlist) {
+        log.Printf("Loaded playlist: %s with %d tracks",
+            playlist.Info.Name, len(playlist.Tracks))
+    },
+    // Search results
+    func(tracks []lavalink.Track) {
+        log.Printf("Found %d results", len(tracks))
+        if len(tracks) > 0 {
+            log.Printf("First result: %s", tracks[0].Info.Title)
+        }
+    },
+    // No matches
+    func() {
+        log.Println("No results found")
+    },
+    // Load failed
+    func(err error) {
+        log.Printf("Error loading track: %v", err)
+    },
+))
+```
+
+## Search Prefixes
+
+Use search prefixes to search on specific platforms:
+
+<Tabs>
+  <Tab title="YouTube">
+    ```go
+    identifier := lavalink.SearchTypeYouTube.Apply("never gonna give you up")
+    // Results in: "ytsearch:never gonna give you up"
+
+    result, err := node.LoadTracks(ctx, identifier)
+    ```
+  </Tab>
+
+  <Tab title="YouTube Music">
+    ```go
+    identifier := lavalink.SearchTypeYouTubeMusic.Apply("lofi hip hop")
+    // Results in: "ytmsearch:lofi hip hop"
+
+    result, err := node.LoadTracks(ctx, identifier)
+    ```
+  </Tab>
+
+  <Tab title="SoundCloud">
+    ```go
+    identifier := lavalink.SearchTypeSoundCloud.Apply("chill beats")
+    // Results in: "scsearch:chill beats"
+
+    result, err := node.LoadTracks(ctx, identifier)
+    ```
+  </Tab>
+
+  <Tab title="Custom Prefix">
+    ```go
+    // For plugins like LavaSrc that add more sources
+    identifier := "spsearch:spotify song name"  // Spotify
+    identifier := "amsearch:apple music song"   // Apple Music
+    identifier := "dzsearch:deezer song"        // Deezer
+
+    result, err := node.LoadTracks(ctx, identifier)
+    ```
+  </Tab>
+</Tabs>
+
+### Available Search Types
+
+| Prefix | Constant | Description |
+|--------|----------|-------------|
+| `ytsearch:` | `SearchTypeYouTube` | YouTube search |
+| `ytmsearch:` | `SearchTypeYouTubeMusic` | YouTube Music search |
+| `scsearch:` | `SearchTypeSoundCloud` | SoundCloud search |
+
+## Load Result Types
+
+### Single Track
+
+Returned when loading a direct track URL:
+
+```go
+result, _ := node.LoadTracks(ctx, "https://youtu.be/dQw4w9WgXcQ")
+
+if result.LoadType == lavalink.LoadTypeTrack {
+    track := result.Data.(lavalink.Track)
+    
+    // Track information
+    log.Printf("Title: %s", track.Info.Title)
+    log.Printf("Author: %s", track.Info.Author)
+    log.Printf("Duration: %s", track.Info.Length)
+    log.Printf("URI: %s", *track.Info.URI)
+    log.Printf("Source: %s", track.Info.SourceName)
+    
+    // Encoded track for playback
+    encodedTrack := track.Encoded
+}
+```
+
+### Playlist
+
+Returned when loading a playlist URL:
+
+```go
+result, _ := node.LoadTracks(ctx, "https://www.youtube.com/playlist?list=...")
+
+if result.LoadType == lavalink.LoadTypePlaylist {
+    playlist := result.Data.(lavalink.Playlist)
+    
+    // Playlist information
+    log.Printf("Name: %s", playlist.Info.Name)
+    log.Printf("Selected Track: %d", playlist.Info.SelectedTrack)
+    
+    // Iterate through tracks
+    for i, track := range playlist.Tracks {
+        log.Printf("%d. %s - %s", i+1, track.Info.Author, track.Info.Title)
+    }
+}
+```
+
+### Search Results
+
+Returned when using search prefixes:
+
+```go
+identifier := lavalink.SearchTypeYouTube.Apply("relaxing music")
+result, _ := node.LoadTracks(ctx, identifier)
+
+if result.LoadType == lavalink.LoadTypeSearch {
+    tracks := result.Data.(lavalink.Search)
+    
+    // Search returns a slice of tracks
+    if len(tracks) > 0 {
+        // Use the first result
+        firstTrack := tracks[0]
+        log.Printf("Top result: %s", firstTrack.Info.Title)
+    }
+}
+```
+
+### Empty Result
+
+Returned when no matches are found:
+
+```go
+result, _ := node.LoadTracks(ctx, "ytsearch:xyzinvalidquery123")
+
+if result.LoadType == lavalink.LoadTypeEmpty {
+    log.Println("No tracks found for this query")
+}
+```
+
+### Exception
+
+Returned when an error occurs during loading:
+
+```go
+result, _ := node.LoadTracks(ctx, "invalid-url")
+
+if result.LoadType == lavalink.LoadTypeError {
+    exception := result.Data.(lavalink.Exception)
+    
+    log.Printf("Error: %s", exception.Message)
+    log.Printf("Severity: %s", exception.Severity)
+    log.Printf("Cause: %s", exception.Cause)
+}
+```
+
+**Exception Severity Levels:**
+- `SeverityCommon`: Normal errors (e.g., track not found)
+- `SeveritySuspicious`: Unusual errors that may indicate issues
+- `SeverityFault`: Serious errors that indicate problems with Lavalink
+
+## Practical Example
+
+Here's a complete example handling user input:
+
+```go
+func loadTrack(node disgolink.Node, query string) (*lavalink.Track, error) {
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+
+    // Auto-detect URLs vs search queries
+    identifier := query
+    urlPattern := regexp.MustCompile(`^https?://`)
+    if !urlPattern.MatchString(query) {
+        // Not a URL, use YouTube search
+        identifier = lavalink.SearchTypeYouTube.Apply(query)
+    }
+
+    // Load the track
+    var track *lavalink.Track
+    node.LoadTracksHandler(ctx, identifier, disgolink.NewResultHandler(
+        func(t lavalink.Track) {
+            track = &t
+        },
+        func(playlist lavalink.Playlist) {
+            if len(playlist.Tracks) > 0 {
+                track = &playlist.Tracks[0]
+            }
+        },
+        func(tracks []lavalink.Track) {
+            if len(tracks) > 0 {
+                track = &tracks[0]
+            }
+        },
+        func() {
+            log.Println("No results found")
+        },
+        func(err error) {
+            log.Printf("Load failed: %v", err)
+        },
+    ))
+
+    if track == nil {
+        return nil, fmt.Errorf("no track loaded")
+    }
+
+    return track, nil
+}
+```
+
+## Decoding Tracks
+
+If you have an encoded track string (e.g., from a database), you can decode it:
+
+<Tabs>
+  <Tab title="Single Track">
+    ```go
+    encodedTrack := "QAAAjQIAJVJpY2sgQXN0bGV5IC0gTmV2ZXIgR29ubmEgR2l2ZSBZb3UgVXA..."
+
+    track, err := node.DecodeTrack(ctx, encodedTrack)
+    if err != nil {
+        log.Printf("Failed to decode: %v", err)
+        return
+    }
+
+    log.Printf("Decoded track: %s", track.Info.Title)
+    ```
+  </Tab>
+
+  <Tab title="Multiple Tracks">
+    ```go
+    encodedTracks := []string{
+        "QAAAjQIAJVJpY2sgQXN0bGV5...",
+        "QAAAkAIAH0RhZnQgUHVuay...",
+    }
+
+    tracks, err := node.DecodeTracks(ctx, encodedTracks)
+    if err != nil {
+        log.Printf("Failed to decode: %v", err)
+        return
+    }
+
+    for _, track := range tracks {
+        log.Printf("Track: %s", track.Info.Title)
+    }
+    ```
+  </Tab>
+</Tabs>
+
+<Accordion title="FAQ">
+  <AccordionItem title="What's the difference between LoadTracks and LoadTracksHandler?">
+    `LoadTracks()` returns a `LoadResult` that you must manually type-assert. `LoadTracksHandler()` provides a cleaner callback-based interface. Both do the same underlying operation.
+  </AccordionItem>
+
+  <AccordionItem title="Can I search multiple platforms at once?">
+    No, each load request searches one platform. You'll need to make separate requests for different platforms and combine the results.
+  </AccordionItem>
+
+  <AccordionItem title="How many search results does ytsearch return?">
+    By default, search queries return up to 5-10 results depending on the platform. You can implement pagination by selecting different results from the returned slice.
+  </AccordionItem>
+
+  <AccordionItem title="What if loading takes too long?">
+    Use `context.WithTimeout()` to set a deadline:
+    ```go
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+    result, err := node.LoadTracks(ctx, identifier)
+    ```
+  </AccordionItem>
+
+  <AccordionItem title="Can I load tracks from Spotify or Apple Music?">
+    Yes, but you need the LavaSrc plugin installed on your Lavalink server. Use search prefixes like `spsearch:` for Spotify and `amsearch:` for Apple Music.
+  </AccordionItem>
+</Accordion>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Playing Audio" icon="play" href="/guides/playing-audio">
+    Learn how to play loaded tracks in voice channels
+  </Card>
+  <Card title="Error Handling" icon="triangle-exclamation" href="/guides/error-handling">
+    Handle track loading errors properly
+  </Card>
+</CardGroup>

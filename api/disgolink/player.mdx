@@ -1,0 +1,368 @@
+---
+title: Player
+description: Interface for managing audio playback in Discord guilds
+---
+
+## Player Interface
+
+The `Player` interface manages audio playback for a specific Discord guild, including track management, volume, filters, and voice state.
+
+## Creating a Player
+
+Players are created automatically by the client:
+
+```go
+// Get or create a player on the best node
+player := client.Player(guildID)
+
+// Get or create a player on a specific node
+player := client.PlayerOnNode(node, guildID)
+
+// Get existing player without creating
+player := client.ExistingPlayer(guildID)
+```
+
+## State Getter Methods
+
+### GuildID
+
+Returns the Discord guild ID this player belongs to.
+
+<ResponseField name="snowflake.ID" type="snowflake.ID">
+  The guild ID
+</ResponseField>
+
+```go
+GuildID() snowflake.ID
+```
+
+### ChannelID
+
+Returns the current voice channel ID.
+
+<ResponseField name="*snowflake.ID" type="*snowflake.ID">
+  The voice channel ID, or nil if not connected
+</ResponseField>
+
+```go
+ChannelID() *snowflake.ID
+```
+
+### Track
+
+Returns the currently playing track.
+
+<ResponseField name="*lavalink.Track" type="*lavalink.Track">
+  The current track, or nil if nothing is playing
+</ResponseField>
+
+```go
+Track() *lavalink.Track
+```
+
+### Paused
+
+Returns whether playback is paused.
+
+<ResponseField name="bool" type="bool">
+  True if paused, false if playing
+</ResponseField>
+
+```go
+Paused() bool
+```
+
+### Position
+
+Returns the current playback position.
+
+<ResponseField name="lavalink.Duration" type="lavalink.Duration">
+  Current position in milliseconds
+</ResponseField>
+
+```go
+Position() lavalink.Duration
+```
+
+<Note>
+  The position is calculated based on the last update time and accounts for whether the player is paused.
+</Note>
+
+### State
+
+Returns the full player state from the last update.
+
+<ResponseField name="lavalink.PlayerState" type="lavalink.PlayerState">
+  Player state including position, connected status, and timestamp
+</ResponseField>
+
+```go
+State() lavalink.PlayerState
+```
+
+### Volume
+
+Returns the current volume level.
+
+<ResponseField name="int" type="int">
+  Volume from 0 to 1000 (100 is default)
+</ResponseField>
+
+```go
+Volume() int
+```
+
+### Filters
+
+Returns the currently applied audio filters.
+
+<ResponseField name="lavalink.Filters" type="lavalink.Filters">
+  Active audio filters (equalizer, karaoke, timescale, etc.)
+</ResponseField>
+
+```go
+Filters() lavalink.Filters
+```
+
+## Player Update
+
+### Update
+
+Updates the player with new settings.
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for the request
+</ParamField>
+
+<ParamField path="opts" type="...lavalink.PlayerUpdateOpt">
+  Update options to apply
+</ParamField>
+
+<ResponseField name="error" type="error">
+  Error if the update fails
+</ResponseField>
+
+```go
+Update(ctx context.Context, opts ...lavalink.PlayerUpdateOpt) error
+```
+
+**Available PlayerUpdateOpt functions:**
+
+- `lavalink.WithTrack(track lavalink.Track)` - Set the track to play
+- `lavalink.WithEncodedTrack(encoded string)` - Set track from encoded string
+- `lavalink.WithIdentifier(identifier string)` - Set track from identifier
+- `lavalink.WithPosition(position lavalink.Duration)` - Seek to position
+- `lavalink.WithEndTime(endTime lavalink.Duration)` - Set track end time
+- `lavalink.WithVolume(volume int)` - Set volume (0-1000)
+- `lavalink.WithPaused(paused bool)` - Pause or resume
+- `lavalink.WithFilters(filters lavalink.Filters)` - Apply audio filters
+- `lavalink.WithVoice(voice lavalink.VoiceState)` - Update voice state
+- `lavalink.WithNoReplace(noReplace bool)` - Don't interrupt current track
+
+**Examples:**
+
+```go
+// Play a track
+err := player.Update(ctx,
+    lavalink.WithTrack(track),
+)
+
+// Set volume and pause
+err := player.Update(ctx,
+    lavalink.WithVolume(50),
+    lavalink.WithPaused(true),
+)
+
+// Apply nightcore filter
+err := player.Update(ctx,
+    lavalink.WithFilters(lavalink.Filters{
+        Timescale: &lavalink.Timescale{
+            Speed: 1.3,
+            Pitch: 1.3,
+        },
+    }),
+)
+
+// Seek to 30 seconds
+err := player.Update(ctx,
+    lavalink.WithPosition(30000),
+)
+```
+
+## Player Management
+
+### Destroy
+
+Destroys the player and removes it from the client.
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for the request
+</ParamField>
+
+<ResponseField name="error" type="error">
+  Error if destruction fails
+</ResponseField>
+
+```go
+Destroy(ctx context.Context) error
+```
+
+**Example:**
+```go
+if err := player.Destroy(ctx); err != nil {
+    log.Printf("Failed to destroy player: %v", err)
+}
+```
+
+### Lavalink
+
+Returns the parent client instance.
+
+<ResponseField name="Client" type="Client">
+  The client that owns this player
+</ResponseField>
+
+```go
+Lavalink() Client
+```
+
+### Node
+
+Returns the node this player is connected to.
+
+<ResponseField name="Node" type="Node">
+  The node handling this player
+</ResponseField>
+
+```go
+Node() Node
+```
+
+<Note>
+  If the player's node is nil, it automatically selects the best available node.
+</Note>
+
+## Internal Methods
+
+These methods are used internally by disgolink and typically shouldn't be called directly:
+
+### Restore
+
+Restores player state from a Lavalink player object.
+
+<ParamField path="player" type="lavalink.Player" required>
+  The player state to restore from
+</ParamField>
+
+```go
+Restore(player lavalink.Player)
+```
+
+### OnEvent
+
+Handles Lavalink events for this player.
+
+<ParamField path="event" type="lavalink.Event" required>
+  The event to process
+</ParamField>
+
+```go
+OnEvent(event lavalink.Event)
+```
+
+### OnPlayerUpdate
+
+Updates the player state from a PlayerUpdate message.
+
+<ParamField path="state" type="lavalink.PlayerState" required>
+  The new player state
+</ParamField>
+
+```go
+OnPlayerUpdate(state lavalink.PlayerState)
+```
+
+### OnVoiceServerUpdate
+
+Handles Discord VOICE_SERVER_UPDATE events.
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for the operation
+</ParamField>
+
+<ParamField path="token" type="string" required>
+  The voice token
+</ParamField>
+
+<ParamField path="endpoint" type="string" required>
+  The voice endpoint
+</ParamField>
+
+```go
+OnVoiceServerUpdate(ctx context.Context, token string, endpoint string)
+```
+
+### OnVoiceStateUpdate
+
+Handles Discord VOICE_STATE_UPDATE events.
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for the operation
+</ParamField>
+
+<ParamField path="channelID" type="*snowflake.ID" required>
+  The voice channel ID (nil if disconnected)
+</ParamField>
+
+<ParamField path="sessionID" type="string" required>
+  The voice session ID
+</ParamField>
+
+```go
+OnVoiceStateUpdate(ctx context.Context, channelID *snowflake.ID, sessionID string)
+```
+
+<Note>
+  Voice state updates are typically handled automatically by calling `Client.OnVoiceServerUpdate()` and `Client.OnVoiceStateUpdate()` from your Discord gateway handler.
+</Note>
+
+## Errors
+
+```go
+var ErrPlayerNoNode = errors.New("player has no node")
+```
+
+Returned when attempting to update or destroy a player that has no associated node.
+
+## Complete Example
+
+```go
+// Get player for guild
+player := client.Player(guildID)
+
+// Load and play a track
+result, err := player.Node().LoadTracks(ctx, "ytsearch:lofi hip hop")
+if err != nil {
+    log.Fatal(err)
+}
+
+if track, ok := result.Data.(lavalink.Track); ok {
+    err = player.Update(ctx,
+        lavalink.WithTrack(track),
+        lavalink.WithVolume(80),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+}
+
+// Later: pause playback
+err = player.Update(ctx, lavalink.WithPaused(true))
+
+// Get current position
+position := player.Position()
+fmt.Printf("Current position: %dms\n", position)
+
+// Clean up when done
+err = player.Destroy(ctx)
+```

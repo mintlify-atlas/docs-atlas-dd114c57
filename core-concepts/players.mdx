@@ -1,0 +1,363 @@
+---
+title: Players
+description: Per-guild audio player management
+---
+
+A `Player` manages audio playback for a single Discord guild. Each guild has its own player instance that maintains state, handles tracks, and controls playback.
+
+## Creating Players
+
+Players are automatically created when first accessed:
+
+```go
+// Get/create player on best node
+player := client.Player(guildID)
+
+// Get/create player on specific node
+player := client.PlayerOnNode(specificNode, guildID)
+
+// Check if player exists without creating
+if player := client.ExistingPlayer(guildID); player != nil {
+    // Player already exists
+}
+```
+
+<ParamField path="Player" type="func(snowflake.ID) Player">
+  Get or create a player for the guild, automatically selecting the best node
+</ParamField>
+
+<ParamField path="PlayerOnNode" type="func(Node, snowflake.ID) Player">
+  Get or create a player on a specific node
+</ParamField>
+
+<ParamField path="ExistingPlayer" type="func(snowflake.ID) Player">
+  Get existing player without creating a new one (returns nil if not found)
+</ParamField>
+
+<Note>
+Players are created per guild. Creating multiple players for the same guild returns the same instance.
+</Note>
+
+## Player State
+
+### Basic Properties
+
+<ParamField path="GuildID" type="func() snowflake.ID">
+  Get the guild ID this player belongs to
+</ParamField>
+
+<ParamField path="ChannelID" type="func() *snowflake.ID">
+  Get the current voice channel ID (nil if not connected)
+</ParamField>
+
+<ParamField path="Track" type="func() *lavalink.Track">
+  Get the currently playing track (nil if nothing is playing)
+</ParamField>
+
+<ParamField path="Paused" type="func() bool">
+  Check if playback is paused
+</ParamField>
+
+<ParamField path="Volume" type="func() int">
+  Get current volume (0-1000, default: 100)
+</ParamField>
+
+<ParamField path="Filters" type="func() lavalink.Filters">
+  Get currently applied audio filters
+</ParamField>
+
+```go
+fmt.Printf("Guild: %d\n", player.GuildID())
+fmt.Printf("Channel: %v\n", player.ChannelID())
+fmt.Printf("Volume: %d%%\n", player.Volume())
+fmt.Printf("Paused: %v\n", player.Paused())
+
+if track := player.Track(); track != nil {
+    fmt.Printf("Playing: %s by %s\n", track.Info.Title, track.Info.Author)
+}
+```
+
+### Playback Position
+
+<ParamField path="Position" type="func() lavalink.Duration">
+  Get current playback position in milliseconds (automatically calculated based on elapsed time)
+</ParamField>
+
+<ParamField path="State" type="func() lavalink.PlayerState">
+  Get the full player state including timestamp, position, connection status, and ping
+</ParamField>
+
+```go
+position := player.Position()
+fmt.Printf("Position: %dms\n", position)
+
+state := player.State()
+fmt.Printf("Ping: %dms, Connected: %v\n", state.Ping, state.Connected)
+```
+
+<Info>
+`Position()` calculates the current position based on the last update time. It accounts for paused state and clamps the value between 0 and track length.
+</Info>
+
+## Updating Players
+
+Update player state with the `Update()` method:
+
+<ParamField path="Update" type="func(context.Context, ...lavalink.PlayerUpdateOpt) error">
+  Apply one or more updates to the player atomically
+</ParamField>
+
+### Playing Tracks
+
+```go
+// Play a track
+err := player.Update(ctx, lavalink.WithTrack(track))
+
+// Play with position
+err := player.Update(ctx, 
+    lavalink.WithTrack(track),
+    lavalink.WithPosition(30000), // Start at 30s
+)
+
+// Stop playback
+err := player.Update(ctx, lavalink.WithNullTrack())
+```
+
+<ParamField path="WithTrack" type="func(Track) PlayerUpdateOpt">
+  Set the track to play (automatically sets encoded track and user data)
+</ParamField>
+
+<ParamField path="WithEncodedTrack" type="func(string) PlayerUpdateOpt">
+  Set track by encoded string
+</ParamField>
+
+<ParamField path="WithNullTrack" type="func() PlayerUpdateOpt">
+  Stop playback by setting track to null
+</ParamField>
+
+<ParamField path="WithTrackIdentifier" type="func(string) PlayerUpdateOpt">
+  Set track by identifier (alternative to encoded track)
+</ParamField>
+
+<ParamField path="WithTrackUserData" type="func(any) PlayerUpdateOpt">
+  Attach custom user data to the track
+</ParamField>
+
+### Playback Control
+
+```go
+// Pause/resume
+err := player.Update(ctx, lavalink.WithPaused(true))
+err := player.Update(ctx, lavalink.WithPaused(false))
+
+// Set volume (0-1000)
+err := player.Update(ctx, lavalink.WithVolume(75))
+
+// Seek to position
+err := player.Update(ctx, lavalink.WithPosition(60000)) // 60 seconds
+
+// Set end time
+err := player.Update(ctx, lavalink.WithEndTime(180000)) // End at 3 minutes
+```
+
+<ParamField path="WithPaused" type="func(bool) PlayerUpdateOpt">
+  Pause or resume playback
+</ParamField>
+
+<ParamField path="WithVolume" type="func(int) PlayerUpdateOpt">
+  Set volume (0-1000, where 100 is default)
+</ParamField>
+
+<ParamField path="WithPosition" type="func(Duration) PlayerUpdateOpt">
+  Seek to a specific position in milliseconds
+</ParamField>
+
+<ParamField path="WithEndTime" type="func(Duration) PlayerUpdateOpt">
+  Set when the track should stop playing (in milliseconds from start)
+</ParamField>
+
+<Warning>
+Volume values above 100 may cause audio distortion. Maximum value is 1000 (10x amplification).
+</Warning>
+
+### Audio Filters
+
+```go
+// Apply filters
+err := player.Update(ctx, lavalink.WithFilters(lavalink.Filters{
+    Volume:   Ptr(1.0),
+    Equalizer: []lavalink.Equalizer{
+        {Band: 0, Gain: 0.2},
+        {Band: 1, Gain: 0.15},
+    },
+}))
+
+// Clear filters
+err := player.Update(ctx, lavalink.WithFilters(lavalink.Filters{}))
+```
+
+<ParamField path="WithFilters" type="func(Filters) PlayerUpdateOpt">
+  Apply audio filters (equalizer, karaoke, timescale, tremolo, vibrato, rotation, distortion, channel mix, low pass)
+</ParamField>
+
+### Advanced Options
+
+<ParamField path="WithNoReplace" type="func(bool) PlayerUpdateOpt">
+  If true, only updates if no track is currently playing (prevents replacing current track)
+</ParamField>
+
+<ParamField path="WithVoice" type="func(VoiceState) PlayerUpdateOpt">
+  Manually set voice connection state (typically handled automatically)
+</ParamField>
+
+```go
+// Only start track if nothing is playing
+err := player.Update(ctx,
+    lavalink.WithTrack(track),
+    lavalink.WithNoReplace(true),
+)
+```
+
+### Combining Options
+
+Multiple options can be applied in a single update:
+
+```go
+err := player.Update(ctx,
+    lavalink.WithTrack(track),
+    lavalink.WithVolume(80),
+    lavalink.WithPosition(15000),
+    lavalink.WithPaused(false),
+)
+```
+
+<Info>
+All options in a single `Update()` call are applied atomically to Lavalink.
+</Info>
+
+## Destroying Players
+
+Clean up player resources:
+
+<ParamField path="Destroy" type="func(context.Context) error">
+  Destroy the player on the Lavalink node and remove it from the client's cache
+</ParamField>
+
+```go
+err := player.Destroy(ctx)
+if err != nil {
+    log.Printf("Failed to destroy player: %v", err)
+}
+```
+
+<Warning>
+Always call `Destroy()` when leaving a voice channel to free resources on the Lavalink server.
+</Warning>
+
+## Voice State Management
+
+Players automatically handle voice state when using `Client.OnVoiceServerUpdate()` and `Client.OnVoiceStateUpdate()`, but you can also call them directly:
+
+<ParamField path="OnVoiceServerUpdate" type="func(context.Context, string, string)">
+  Handle VOICE_SERVER_UPDATE event (token, endpoint)
+</ParamField>
+
+<ParamField path="OnVoiceStateUpdate" type="func(context.Context, *snowflake.ID, string)">
+  Handle VOICE_STATE_UPDATE event (channelID, sessionID)
+</ParamField>
+
+```go
+// Typically forwarded through the client
+client.OnVoiceServerUpdate(ctx, guildID, token, endpoint)
+client.OnVoiceStateUpdate(ctx, guildID, channelID, sessionID)
+
+// Or directly on the player
+player.OnVoiceServerUpdate(ctx, token, endpoint)
+player.OnVoiceStateUpdate(ctx, channelID, sessionID)
+```
+
+<Info>
+When `channelID` is nil in `OnVoiceStateUpdate`, the player automatically destroys itself.
+</Info>
+
+## Node Access
+
+<ParamField path="Node" type="func() Node">
+  Get the node this player is connected to
+</ParamField>
+
+<ParamField path="Lavalink" type="func() Client">
+  Get the parent client instance
+</ParamField>
+
+```go
+node := player.Node()
+fmt.Printf("Player is on node: %s\n", node.Config().Name)
+
+client := player.Lavalink()
+```
+
+## Internal Methods
+
+These methods are used internally by DisGoLink and typically don't need to be called directly:
+
+<ParamField path="Restore" type="func(lavalink.Player)">
+  Restore player state from a Lavalink player object (used during session resuming)
+</ParamField>
+
+<ParamField path="OnEvent" type="func(lavalink.Event)">
+  Handle events from Lavalink (called internally)
+</ParamField>
+
+<ParamField path="OnPlayerUpdate" type="func(lavalink.PlayerState)">
+  Update player state from PlayerUpdate messages (called internally)
+</ParamField>
+
+## Error Handling
+
+<ParamField path="ErrPlayerNoNode" type="error">
+  Returned when trying to update or destroy a player that has no assigned node
+</ParamField>
+
+```go
+err := player.Update(ctx, lavalink.WithVolume(100))
+if errors.Is(err, disgolink.ErrPlayerNoNode) {
+    // Player has no node - possibly disconnected
+}
+```
+
+## Example: Complete Player Lifecycle
+
+```go
+// Create player
+player := client.Player(guildID)
+
+// Load and play a track
+result, err := node.LoadTracks(ctx, "ytsearch:rick astley never gonna give you up")
+if err != nil {
+    return err
+}
+
+var track lavalink.Track
+if search, ok := result.Data.(lavalink.Search); ok && len(search) > 0 {
+    track = search[0]
+}
+
+// Start playback
+err = player.Update(ctx,
+    lavalink.WithTrack(track),
+    lavalink.WithVolume(80),
+)
+if err != nil {
+    return err
+}
+
+// Later: pause
+err = player.Update(ctx, lavalink.WithPaused(true))
+
+// Later: resume
+err = player.Update(ctx, lavalink.WithPaused(false))
+
+// When done: cleanup
+err = player.Destroy(ctx)
+```

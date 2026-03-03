@@ -1,0 +1,548 @@
+---
+title: 'Audio Filters'
+description: 'Learn how to apply audio filters to enhance playback'
+icon: 'sliders'
+---
+
+DisGoLink supports a wide range of audio filters to modify playback. This guide covers all available filters and how to use them.
+
+## Applying Filters
+
+Filters are applied using the `WithFilters()` option:
+
+```go
+import "github.com/disgoorg/disgolink/v3/lavalink"
+
+// Create filters
+filters := lavalink.Filters{
+    Volume: &lavalink.Volume(0.8),
+}
+
+// Apply to player
+err := player.Update(ctx, lavalink.WithFilters(filters))
+if err != nil {
+    log.Printf("Failed to apply filters: %v", err)
+}
+```
+
+## Available Filters
+
+### Volume
+
+Adjust the player volume (independent of the player volume setting):
+
+```go
+volume := lavalink.Volume(1.0) // 100% volume
+filters := lavalink.Filters{
+    Volume: &volume,
+}
+
+// 50% volume
+volume = lavalink.Volume(0.5)
+
+// 150% volume (may cause distortion)
+volume = lavalink.Volume(1.5)
+```
+
+**Range:** 0.0 to 5.0 (0% to 500%)
+
+### Equalizer
+
+Adjust 15 bands of frequencies:
+
+<Tabs>
+  <Tab title="Bass Boost">
+    ```go
+    equalizer := &lavalink.Equalizer{
+        0:  0.2,   // 25 Hz
+        1:  0.15,  // 40 Hz
+        2:  0.1,   // 63 Hz
+        3:  0.05,  // 100 Hz
+        4:  0.0,   // 160 Hz
+        5:  -0.05, // 250 Hz
+        6:  -0.1,  // 400 Hz
+        7:  -0.1,  // 630 Hz
+        8:  -0.1,  // 1000 Hz
+        9:  -0.1,  // 1600 Hz
+        10: -0.1,  // 2500 Hz
+        11: -0.1,  // 4000 Hz
+        12: -0.1,  // 6300 Hz
+        13: -0.1,  // 10000 Hz
+        14: -0.1,  // 16000 Hz
+    }
+
+    filters := lavalink.Filters{
+        Equalizer: equalizer,
+    }
+    ```
+  </Tab>
+
+  <Tab title="Treble Boost">
+    ```go
+    equalizer := &lavalink.Equalizer{
+        0:  -0.1,
+        1:  -0.1,
+        2:  -0.1,
+        3:  -0.05,
+        4:  0.0,
+        5:  0.0,
+        6:  0.0,
+        7:  0.0,
+        8:  0.05,
+        9:  0.1,
+        10: 0.1,
+        11: 0.15,
+        12: 0.2,
+        13: 0.2,
+        14: 0.25,
+    }
+    ```
+  </Tab>
+
+  <Tab title="Flat (Reset)">
+    ```go
+    // Remove equalizer
+    filters := lavalink.Filters{
+        Equalizer: nil,
+    }
+    ```
+  </Tab>
+</Tabs>
+
+**Band Frequencies:**
+
+| Band | Frequency |
+|------|----------|
+| 0 | 25 Hz |
+| 1 | 40 Hz |
+| 2 | 63 Hz |
+| 3 | 100 Hz |
+| 4 | 160 Hz |
+| 5 | 250 Hz |
+| 6 | 400 Hz |
+| 7 | 630 Hz |
+| 8 | 1 kHz |
+| 9 | 1.6 kHz |
+| 10 | 2.5 kHz |
+| 11 | 4 kHz |
+| 12 | 6.3 kHz |
+| 13 | 10 kHz |
+| 14 | 16 kHz |
+
+**Gain Range:** -0.25 to 1.0
+
+### Timescale
+
+Change speed, pitch, and rate:
+
+<Tabs>
+  <Tab title="Nightcore Effect">
+    ```go
+    timescale := &lavalink.Timescale{
+        Speed: 1.2,   // 20% faster
+        Pitch: 1.2,   // Higher pitch
+        Rate:  1.0,   // Normal rate
+    }
+
+    filters := lavalink.Filters{
+        Timescale: timescale,
+    }
+    ```
+  </Tab>
+
+  <Tab title="Slowed + Reverb">
+    ```go
+    timescale := &lavalink.Timescale{
+        Speed: 0.8,   // 20% slower
+        Pitch: 0.9,   // Slightly lower pitch
+        Rate:  1.0,
+    }
+    ```
+  </Tab>
+
+  <Tab title="Chipmunk Voice">
+    ```go
+    timescale := &lavalink.Timescale{
+        Speed: 1.0,
+        Pitch: 1.5,   // Much higher pitch
+        Rate:  1.0,
+    }
+    ```
+  </Tab>
+</Tabs>
+
+**Parameters:**
+- `Speed`: Playback speed (0.0 < x)
+- `Pitch`: Pitch shift (0.0 < x)
+- `Rate`: Audio rate (0.0 < x)
+
+### Tremolo
+
+Create a trembling/vibrating effect by changing volume:
+
+```go
+tremolo := &lavalink.Tremolo{
+    Frequency: 2.0,  // How fast the volume changes (Hz)
+    Depth:     0.5,  // How much the volume changes (0-1)
+}
+
+filters := lavalink.Filters{
+    Tremolo: tremolo,
+}
+```
+
+**Parameters:**
+- `Frequency`: 0.0 < x (recommended: 0.1 - 10.0)
+- `Depth`: 0.0 < x ≤ 1.0
+
+### Vibrato
+
+Create a vibrating effect by changing pitch:
+
+```go
+vibrato := &lavalink.Vibrato{
+    Frequency: 2.0,  // How fast the pitch changes (Hz)
+    Depth:     0.5,  // How much the pitch changes (0-1)
+}
+
+filters := lavalink.Filters{
+    Vibrato: vibrato,
+}
+```
+
+**Parameters:**
+- `Frequency`: 0.0 < x ≤ 14.0
+- `Depth`: 0.0 < x ≤ 1.0
+
+### Rotation
+
+Create an 8D/rotating audio effect:
+
+```go
+rotation := &lavalink.Rotation{
+    RotationHz: 5, // Rotation speed (Hz)
+}
+
+filters := lavalink.Filters{
+    Rotation: rotation,
+}
+```
+
+**Range:** Any integer value
+
+**Common values:**
+- 0: No rotation
+- 5: Slow rotation (8D effect)
+- 10: Medium rotation
+- 20+: Fast rotation
+
+### Karaoke
+
+Remove or isolate vocals:
+
+```go
+karaoke := &lavalink.Karaoke{
+    Level:       1.0,
+    MonoLevel:   1.0,
+    FilterBand:  220.0,
+    FilterWidth: 100.0,
+}
+
+filters := lavalink.Filters{
+    Karaoke: karaoke,
+}
+```
+
+**Parameters:**
+- `Level`: Overall effect level
+- `MonoLevel`: Mono signal level
+- `FilterBand`: Center frequency (Hz)
+- `FilterWidth`: Band width (Hz)
+
+### Distortion
+
+Add distortion to the audio:
+
+```go
+distortion := &lavalink.Distortion{
+    SinOffset: 0.0,
+    SinScale:  1.0,
+    CosOffset: 0.0,
+    CosScale:  1.0,
+    TanOffset: 0.0,
+    TanScale:  1.0,
+    Offset:    0.0,
+    Scale:     1.0,
+}
+
+filters := lavalink.Filters{
+    Distortion: distortion,
+}
+```
+
+**Parameters:** All values are float32. Experiment to find desired effects.
+
+### Channel Mix
+
+Mix left and right channels:
+
+<Tabs>
+  <Tab title="Mono">
+    ```go
+    // Convert stereo to mono
+    channelMix := &lavalink.ChannelMix{
+        LeftToLeft:   0.5,
+        LeftToRight:  0.5,
+        RightToLeft:  0.5,
+        RightToRight: 0.5,
+    }
+    ```
+  </Tab>
+
+  <Tab title="Swap Channels">
+    ```go
+    // Swap left and right
+    channelMix := &lavalink.ChannelMix{
+        LeftToLeft:   0.0,
+        LeftToRight:  1.0,
+        RightToLeft:  1.0,
+        RightToRight: 0.0,
+    }
+    ```
+  </Tab>
+
+  <Tab title="Left Only">
+    ```go
+    // Only left channel
+    channelMix := &lavalink.ChannelMix{
+        LeftToLeft:   1.0,
+        LeftToRight:  0.0,
+        RightToLeft:  0.0,
+        RightToRight: 0.0,
+    }
+    ```
+  </Tab>
+</Tabs>
+
+**Parameters:**
+- `LeftToLeft`: Left input to left output
+- `LeftToRight`: Left input to right output
+- `RightToLeft`: Right input to left output
+- `RightToRight`: Right input to right output
+
+**Range:** 0.0 to 1.0 for each parameter
+
+### Low Pass
+
+Suppress higher frequencies:
+
+```go
+lowPass := &lavalink.LowPass{
+    Smoothing: 20.0, // Higher = more suppression
+}
+
+filters := lavalink.Filters{
+    LowPass: lowPass,
+}
+```
+
+**Range:** 1.0 < x
+
+**Common values:**
+- 20.0: Light filtering
+- 50.0: Moderate filtering
+- 100.0: Heavy filtering
+
+## Plugin Filters
+
+Some Lavalink plugins add custom filters:
+
+```go
+filters := lavalink.Filters{
+    PluginFilters: map[string]any{
+        "echo": map[string]any{
+            "delay":  0.5,
+            "decay":  0.3,
+        },
+    },
+}
+```
+
+Consult your plugin's documentation for available filters.
+
+## Combining Filters
+
+You can apply multiple filters simultaneously:
+
+```go
+filters := lavalink.Filters{
+    Equalizer: &lavalink.Equalizer{
+        0: 0.2,
+        1: 0.15,
+        2: 0.1,
+    },
+    Timescale: &lavalink.Timescale{
+        Speed: 1.2,
+        Pitch: 1.2,
+        Rate:  1.0,
+    },
+    Rotation: &lavalink.Rotation{
+        RotationHz: 5,
+    },
+}
+
+err := player.Update(ctx, lavalink.WithFilters(filters))
+```
+
+## Removing Filters
+
+To remove all filters:
+
+```go
+// Empty filters struct
+filters := lavalink.Filters{}
+err := player.Update(ctx, lavalink.WithFilters(filters))
+```
+
+Or remove specific filters:
+
+```go
+// Get current filters
+filters := player.Filters()
+
+// Remove equalizer but keep others
+filters.Equalizer = nil
+
+err := player.Update(ctx, lavalink.WithFilters(filters))
+```
+
+## Practical Examples
+
+### Bass Boost Command
+
+```go
+func bassBoost(player disgolink.Player, enabled bool) error {
+    filters := player.Filters()
+    
+    if enabled {
+        // Apply bass boost
+        filters.Equalizer = &lavalink.Equalizer{
+            0: 0.2,
+            1: 0.15,
+            2: 0.1,
+            3: 0.05,
+        }
+    } else {
+        // Remove equalizer
+        filters.Equalizer = nil
+    }
+    
+    return player.Update(context.TODO(), lavalink.WithFilters(filters))
+}
+```
+
+### Nightcore Effect
+
+```go
+func nightcore(player disgolink.Player, enabled bool) error {
+    filters := player.Filters()
+    
+    if enabled {
+        filters.Timescale = &lavalink.Timescale{
+            Speed: 1.2,
+            Pitch: 1.2,
+            Rate:  1.0,
+        }
+    } else {
+        filters.Timescale = nil
+    }
+    
+    return player.Update(context.TODO(), lavalink.WithFilters(filters))
+}
+```
+
+### 8D Audio Effect
+
+```go
+func eightD(player disgolink.Player, enabled bool) error {
+    filters := player.Filters()
+    
+    if enabled {
+        filters.Rotation = &lavalink.Rotation{
+            RotationHz: 5,
+        }
+    } else {
+        filters.Rotation = nil
+    }
+    
+    return player.Update(context.TODO(), lavalink.WithFilters(filters))
+}
+```
+
+### Soft Audio (Low Pass)
+
+```go
+func soft(player disgolink.Player, enabled bool) error {
+    filters := player.Filters()
+    
+    if enabled {
+        filters.LowPass = &lavalink.LowPass{
+            Smoothing: 20.0,
+        }
+    } else {
+        filters.LowPass = nil
+    }
+    
+    return player.Update(context.TODO(), lavalink.WithFilters(filters))
+}
+```
+
+## Getting Current Filters
+
+Retrieve the currently applied filters:
+
+```go
+filters := player.Filters()
+
+if filters.Equalizer != nil {
+    log.Println("Equalizer is active")
+}
+
+if filters.Timescale != nil {
+    log.Printf("Speed: %.2f, Pitch: %.2f", 
+        filters.Timescale.Speed, filters.Timescale.Pitch)
+}
+```
+
+<Accordion title="FAQ">
+  <AccordionItem title="Do filters affect performance?">
+    Yes, filters add computational overhead on the Lavalink server. Using many filters simultaneously may impact performance, especially with many concurrent players.
+  </AccordionItem>
+
+  <AccordionItem title="Are filter changes instant?">
+    Filter changes are applied in real-time but may have a brief transition period. The audio won't stop during filter changes.
+  </AccordionItem>
+
+  <AccordionItem title="Can I create custom filters?">
+    Custom filters require a Lavalink plugin. DisGoLink supports plugin filters through the `PluginFilters` map.
+  </AccordionItem>
+
+  <AccordionItem title="Why does my audio sound distorted?">
+    This usually happens when filter values are too extreme (e.g., volume > 2.0, equalizer gains > 0.5). Try reducing the values.
+  </AccordionItem>
+
+  <AccordionItem title="Do filters persist between tracks?">
+    Yes, filters remain active until explicitly removed. They apply to all tracks played by that player.
+  </AccordionItem>
+</Accordion>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Plugins" icon="puzzle-piece" href="/guides/plugins">
+    Extend functionality with Lavalink plugins
+  </Card>
+  <Card title="Error Handling" icon="triangle-exclamation" href="/guides/error-handling">
+    Handle filter application errors
+  </Card>
+</CardGroup>

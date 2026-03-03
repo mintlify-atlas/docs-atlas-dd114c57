@@ -1,0 +1,295 @@
+---
+title: Nodes
+description: Managing connections to Lavalink servers
+---
+
+A `Node` represents a connection to a single Lavalink server. Nodes handle WebSocket communication, REST API calls, and track loading.
+
+## Node Configuration
+
+Configure a node with `NodeConfig`:
+
+```go
+config := disgolink.NodeConfig{
+    Name:      "primary-node",
+    Address:   "lavalink.example.com:443",
+    Password:  "youshallnotpass",
+    Secure:    true,
+    SessionID: "",
+}
+
+node, err := client.AddNode(ctx, config)
+```
+
+<ParamField path="Name" type="string" required>
+  Unique identifier for the node
+</ParamField>
+
+<ParamField path="Address" type="string" required>
+  Node address in `host:port` format (e.g., `localhost:2333`)
+</ParamField>
+
+<ParamField path="Password" type="string" required>
+  Authorization password matching the Lavalink server configuration
+</ParamField>
+
+<ParamField path="Secure" type="bool" default="false">
+  Use secure connections (wss:// and https:// instead of ws:// and http://)
+</ParamField>
+
+<ParamField path="SessionID" type="string">
+  Previous session ID for resuming sessions after reconnection
+</ParamField>
+
+## Connection Status
+
+Nodes have four possible states:
+
+<ParamField path="StatusConnecting" type="Status">
+  Initial connection in progress
+</ParamField>
+
+<ParamField path="StatusConnected" type="Status">
+  Successfully connected and ready
+</ParamField>
+
+<ParamField path="StatusReconnecting" type="Status">
+  Lost connection, attempting to reconnect
+</ParamField>
+
+<ParamField path="StatusDisconnected" type="Status">
+  Not connected (initial state or after Close())
+</ParamField>
+
+```go
+status := node.Status()
+switch status {
+case disgolink.StatusConnected:
+    fmt.Println("Node is ready")
+case disgolink.StatusReconnecting:
+    fmt.Println("Node is reconnecting...")
+}
+```
+
+## Connection Lifecycle
+
+### Opening Connections
+
+Nodes automatically connect when added to the client:
+
+```go
+node, err := client.AddNode(ctx, config)
+if err != nil {
+    // Handle connection error
+}
+```
+
+<Note>
+`AddNode()` returns after successfully establishing a connection. If connection fails, it will automatically retry with exponential backoff (max 30s delay).
+</Note>
+
+### Automatic Reconnection
+
+Nodes automatically reconnect if the connection is lost:
+
+- **Reconnect Delay**: Starts at 0s, increases by 2s per attempt, maximum 30s
+- **Exponential Backoff**: `delay = min(try * 2s, 30s)`
+- **Unlimited Retries**: Continues until successful or explicitly closed
+
+<Warning>
+Reconnection happens asynchronously. Check `node.Status()` to verify connection state.
+</Warning>
+
+### Closing Connections
+
+```go
+client.RemoveNode("node-name") // Closes and removes the node
+```
+
+<ParamField path="Close" type="func()">
+  Manually close a node connection
+</ParamField>
+
+## Session Resuming
+
+Lavalink supports resuming sessions to preserve player state across reconnections:
+
+### Initial Setup
+
+```go
+// Enable resuming on the node
+err := node.Update(ctx, lavalink.SessionUpdate{
+    Resuming:   Ptr(true),
+    Timeout:    Ptr(60), // Resume timeout in seconds
+})
+```
+
+<ParamField path="Update" type="func(context.Context, lavalink.SessionUpdate) error">
+  Update node session configuration
+  
+  **SessionUpdate Fields:**
+  - `Resuming`: Enable/disable session resuming
+  - `Timeout`: How long (in seconds) Lavalink keeps the session after disconnect
+</ParamField>
+
+### Resuming After Restart
+
+Store the session ID and provide it when reconnecting:
+
+```go
+// Get current session ID
+sessionID := node.SessionID()
+
+// Store sessionID persistently
+
+// Later, when recreating the client
+node, err := client.AddNode(ctx, disgolink.NodeConfig{
+    Name:      "primary-node",
+    Address:   "localhost:2333",
+    Password:  "youshallnotpass",
+    SessionID: sessionID, // Previous session ID
+})
+```
+
+<Info>
+When a session is successfully resumed, DisGoLink automatically syncs all player states from the server.
+</Info>
+
+## Load Balancing
+
+DisGoLink includes built-in load balancing based on node statistics:
+
+<ParamField path="BestNode" type="func() Node">
+  Select the node with the best performance metrics
+</ParamField>
+
+```go
+// Automatically use the best node
+bestNode := client.BestNode()
+player := client.PlayerOnNode(bestNode, guildID)
+
+// Or let Player() choose automatically
+player := client.Player(guildID) // Uses BestNode() internally
+```
+
+Node selection criteria (in order):
+1. **Lowest CPU load**
+2. **Lowest memory usage**
+3. **Lowest system load**
+4. **First node** (if all metrics are equal)
+
+<Note>
+Node statistics are automatically updated via the `StatsMessage` event from Lavalink.
+</Note>
+
+## Node Statistics
+
+<ParamField path="Stats" type="func() lavalink.Stats">
+  Get current node performance metrics
+</ParamField>
+
+```go
+stats := node.Stats()
+fmt.Printf("CPU: %.2f%%, Players: %d\n", 
+    stats.CPU.SystemLoad*100, 
+    stats.Players)
+```
+
+Stats include:
+- CPU load (Lavalink and system)
+- Memory usage (used, free, allocated, reservable)
+- Uptime
+- Active player count
+- Frame statistics (sent, nulled, deficit)
+
+## Node Information
+
+<ParamField path="SessionID" type="func() string">
+  Get the current session ID for this node
+</ParamField>
+
+<ParamField path="Config" type="func() NodeConfig">
+  Get the node's configuration
+</ParamField>
+
+<ParamField path="Lavalink" type="func() Client">
+  Get the parent client instance
+</ParamField>
+
+<ParamField path="Version" type="func(context.Context) (string, error)">
+  Get the Lavalink server version
+</ParamField>
+
+<ParamField path="Info" type="func(context.Context) (*lavalink.Info, error)">
+  Get detailed server information (version, plugins, source managers, filters)
+</ParamField>
+
+```go
+// Get version
+version, err := node.Version(ctx)
+fmt.Println("Lavalink version:", version)
+
+// Get detailed info
+info, err := node.Info(ctx)
+fmt.Printf("Plugins: %v\n", info.Plugins)
+fmt.Printf("Source managers: %v\n", info.SourceManagers)
+```
+
+## REST Client Access
+
+<ParamField path="Rest" type="func() RestClient">
+  Access the node's REST API client for direct API calls
+</ParamField>
+
+```go
+restClient := node.Rest()
+
+// Use REST client directly
+players, err := restClient.Players(ctx, sessionID)
+player, err := restClient.UpdatePlayer(ctx, sessionID, guildID, update)
+```
+
+<Warning>
+Direct REST API calls bypass DisGoLink's player state management. Use `Player.Update()` instead when possible.
+</Warning>
+
+## Track Loading
+
+<ParamField path="LoadTracks" type="func(context.Context, string) (*lavalink.LoadResult, error)">
+  Load tracks by identifier (URL or search query)
+</ParamField>
+
+<ParamField path="LoadTracksHandler" type="func(context.Context, string, AudioLoadResultHandler)">
+  Load tracks with a callback handler for results
+</ParamField>
+
+<ParamField path="DecodeTrack" type="func(context.Context, string) (*lavalink.Track, error)">
+  Decode a single encoded track string
+</ParamField>
+
+<ParamField path="DecodeTracks" type="func(context.Context, []string) ([]lavalink.Track, error)">
+  Decode multiple encoded track strings
+</ParamField>
+
+```go
+// Load tracks
+result, err := node.LoadTracks(ctx, "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+if err != nil {
+    return err
+}
+
+// Handle result
+switch data := result.Data.(type) {
+case lavalink.Track:
+    fmt.Println("Loaded track:", data.Info.Title)
+case lavalink.Playlist:
+    fmt.Println("Loaded playlist:", data.Info.Name)
+case lavalink.Search:
+    fmt.Printf("Found %d tracks\n", len(data))
+}
+
+// Or use a handler
+node.LoadTracksHandler(ctx, "ytsearch:never gonna give you up", handler)
+```
+
+See the [Tracks](/core-concepts/tracks) page for details on track loading and search queries.

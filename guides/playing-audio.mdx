@@ -1,0 +1,444 @@
+---
+title: 'Playing Audio'
+description: 'Learn how to play tracks in Discord voice channels'
+icon: 'play'
+---
+
+This guide covers the complete flow of playing audio in Discord voice channels using DisGoLink.
+
+## Basic Playback Flow
+
+The typical flow for playing audio:
+
+<Steps>
+  <Step title="Connect to voice channel">
+    First, connect your bot to a Discord voice channel:
+
+    ```go
+    import "github.com/disgoorg/snowflake/v2"
+
+    guildID := snowflake.ID(123456789)
+    channelID := snowflake.ID(987654321)
+
+    // Connect to voice (using disgo)
+    err := client.UpdateVoiceState(
+        context.TODO(),
+        guildID,
+        &channelID,
+        false, // self-mute
+        false, // self-deaf
+    )
+    if err != nil {
+        log.Printf("Failed to connect to voice: %v", err)
+        return
+    }
+    ```
+
+    The voice state updates will be automatically forwarded to DisGoLink through event handlers.
+  </Step>
+
+  <Step title="Get or create a player">
+    Retrieve a player for the guild:
+
+    ```go
+    // Get player for guild (creates if doesn't exist)
+    player := lavalinkClient.Player(guildID)
+
+    // Or get player on specific node
+    node := lavalinkClient.BestNode()
+    player := lavalinkClient.PlayerOnNode(node, guildID)
+
+    // Check if player already exists
+    existingPlayer := lavalinkClient.ExistingPlayer(guildID)
+    if existingPlayer == nil {
+        log.Println("No player exists for this guild yet")
+    }
+    ```
+  </Step>
+
+  <Step title="Load a track">
+    Load the track you want to play:
+
+    ```go
+    node := player.Node()
+    result, err := node.LoadTracks(ctx, "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+    if err != nil {
+        log.Printf("Failed to load: %v", err)
+        return
+    }
+
+    track := result.Data.(lavalink.Track)
+    ```
+  </Step>
+
+  <Step title="Play the track">
+    Update the player to play the track:
+
+    ```go
+    err = player.Update(context.TODO(), lavalink.WithTrack(track))
+    if err != nil {
+        log.Printf("Failed to play: %v", err)
+        return
+    }
+
+    log.Printf("Now playing: %s", track.Info.Title)
+    ```
+  </Step>
+</Steps>
+
+## Complete Example
+
+Here's a full example combining all steps:
+
+```go
+func playTrack(client bot.Client, lavalink disgolink.Client, guildID, channelID snowflake.ID, query string) error {
+    // 1. Connect to voice
+    if err := client.UpdateVoiceState(context.TODO(), guildID, &channelID, false, false); err != nil {
+        return fmt.Errorf("failed to connect to voice: %w", err)
+    }
+
+    // 2. Get player
+    player := lavalink.Player(guildID)
+
+    // 3. Load track
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+
+    identifier := lavalink.SearchTypeYouTube.Apply(query)
+    result, err := player.Node().LoadTracks(ctx, identifier)
+    if err != nil {
+        return fmt.Errorf("failed to load track: %w", err)
+    }
+
+    if result.LoadType != lavalink.LoadTypeSearch {
+        return fmt.Errorf("no results found")
+    }
+
+    tracks := result.Data.(lavalink.Search)
+    if len(tracks) == 0 {
+        return fmt.Errorf("empty search results")
+    }
+
+    // 4. Play the track
+    if err := player.Update(ctx, lavalink.WithTrack(tracks[0])); err != nil {
+        return fmt.Errorf("failed to play track: %w", err)
+    }
+
+    return nil
+}
+```
+
+## Player Update Options
+
+The `Player.Update()` method accepts multiple options to control playback:
+
+### Playing Tracks
+
+<Tabs>
+  <Tab title="Play Track">
+    ```go
+    // Play a loaded track
+    err := player.Update(ctx, lavalink.WithTrack(track))
+    ```
+  </Tab>
+
+  <Tab title="Play Encoded Track">
+    ```go
+    // Play using encoded track string
+    encodedTrack := "QAAAjQIAJVJpY2sgQXN0bGV5..."
+    err := player.Update(ctx, lavalink.WithEncodedTrack(encodedTrack))
+    ```
+  </Tab>
+
+  <Tab title="Stop Playback">
+    ```go
+    // Stop the current track
+    err := player.Update(ctx, lavalink.WithNullTrack())
+    ```
+  </Tab>
+</Tabs>
+
+### Volume Control
+
+Control the player's volume (0-1000, default is 100):
+
+```go
+// Set volume to 50%
+err := player.Update(ctx, lavalink.WithVolume(50))
+
+// Set volume to 150% (louder)
+err := player.Update(ctx, lavalink.WithVolume(150))
+
+// Get current volume
+volume := player.Volume()
+log.Printf("Current volume: %d", volume)
+```
+
+### Pause and Resume
+
+<Tabs>
+  <Tab title="Pause">
+    ```go
+    // Pause the player
+    err := player.Update(ctx, lavalink.WithPaused(true))
+
+    // Check if paused
+    if player.Paused() {
+        log.Println("Player is paused")
+    }
+    ```
+  </Tab>
+
+  <Tab title="Resume">
+    ```go
+    // Resume playback
+    err := player.Update(ctx, lavalink.WithPaused(false))
+    ```
+  </Tab>
+
+  <Tab title="Toggle">
+    ```go
+    // Toggle pause state
+    err := player.Update(ctx, lavalink.WithPaused(!player.Paused()))
+    ```
+  </Tab>
+</Tabs>
+
+### Position Seeking
+
+Seek to a specific position in the track:
+
+```go
+import "github.com/disgoorg/disgolink/v3/lavalink"
+
+// Seek to 30 seconds
+err := player.Update(ctx, lavalink.WithPosition(30 * lavalink.Second))
+
+// Seek to 2 minutes
+err := player.Update(ctx, lavalink.WithPosition(2 * lavalink.Minute))
+
+// Seek to 1 hour
+err := player.Update(ctx, lavalink.WithPosition(1 * lavalink.Hour))
+
+// Get current position
+position := player.Position()
+log.Printf("Position: %s", position) // Format: 1:23
+```
+
+**Duration Units:**
+- `lavalink.Millisecond` (base unit)
+- `lavalink.Second` (1000ms)
+- `lavalink.Minute` (60s)
+- `lavalink.Hour` (60m)
+
+### Combining Options
+
+You can combine multiple options in a single update:
+
+```go
+err := player.Update(ctx,
+    lavalink.WithTrack(track),
+    lavalink.WithVolume(80),
+    lavalink.WithPosition(10 * lavalink.Second),
+)
+```
+
+## Player State
+
+Access the current player state:
+
+```go
+// Get current track
+track := player.Track()
+if track != nil {
+    log.Printf("Playing: %s by %s", track.Info.Title, track.Info.Author)
+    log.Printf("Duration: %s", track.Info.Length)
+}
+
+// Get playback position
+position := player.Position()
+
+// Check if paused
+if player.Paused() {
+    log.Println("Player is paused")
+}
+
+// Get volume
+volume := player.Volume()
+
+// Get voice channel
+channelID := player.ChannelID()
+if channelID != nil {
+    log.Printf("Connected to channel: %s", channelID)
+}
+
+// Get detailed state
+state := player.State()
+log.Printf("Connected: %t", state.Connected)
+log.Printf("Ping: %dms", state.Ping)
+```
+
+## Handling Track Events
+
+Listen for track lifecycle events:
+
+```go
+lavalinkClient := disgolink.New(
+    applicationID,
+    disgolink.WithListenerFunc(onTrackStart),
+    disgolink.WithListenerFunc(onTrackEnd),
+    disgolink.WithListenerFunc(onTrackException),
+    disgolink.WithListenerFunc(onTrackStuck),
+)
+
+func onTrackStart(player disgolink.Player, event lavalink.TrackStartEvent) {
+    log.Printf("Track started: %s", event.Track.Info.Title)
+}
+
+func onTrackEnd(player disgolink.Player, event lavalink.TrackEndEvent) {
+    log.Printf("Track ended: %s (reason: %s)", event.Track.Info.Title, event.Reason)
+    
+    // Check if we should play next track
+    if event.Reason.MayStartNext() {
+        // Play next track from queue
+    }
+}
+
+func onTrackException(player disgolink.Player, event lavalink.TrackExceptionEvent) {
+    log.Printf("Track error: %s", event.Exception.Message)
+}
+
+func onTrackStuck(player disgolink.Player, event lavalink.TrackStuckEvent) {
+    log.Printf("Track stuck for %dms", event.ThresholdMs)
+}
+```
+
+### Track End Reasons
+
+| Reason | Description | MayStartNext |
+|--------|-------------|-------------|
+| `finished` | Track completed normally | ✅ |
+| `loadFailed` | Track failed to load | ✅ |
+| `stopped` | Stopped by user/command | ❌ |
+| `replaced` | Replaced by another track | ❌ |
+| `cleanup` | Cleanup operation | ❌ |
+
+```go
+if event.Reason.MayStartNext() {
+    // Safe to play next track
+}
+```
+
+## Managing Players
+
+### Destroying Players
+
+Clean up a player when done:
+
+```go
+err := player.Destroy(ctx)
+if err != nil {
+    log.Printf("Failed to destroy player: %v", err)
+}
+
+// Player is automatically removed from the client
+```
+
+### Iterating Players
+
+Get all active players:
+
+```go
+lavalinkClient.ForPlayers(func(player disgolink.Player) {
+    log.Printf("Active player in guild: %s", player.GuildID())
+    
+    track := player.Track()
+    if track != nil {
+        log.Printf("  Playing: %s", track.Info.Title)
+    }
+})
+```
+
+## Voice State Handling
+
+DisGoLink requires voice state updates from Discord:
+
+```go
+// Forward Discord voice events to DisGoLink
+
+func onVoiceStateUpdate(event *events.VoiceStateUpdate) {
+    // User's voice state changed
+    var channelID *snowflake.ID
+    if event.VoiceState.ChannelID != nil {
+        channelID = event.VoiceState.ChannelID
+    }
+    
+    lavalinkClient.OnVoiceStateUpdate(
+        context.TODO(),
+        event.VoiceState.GuildID,
+        channelID,
+        event.VoiceState.SessionID,
+    )
+}
+
+func onVoiceServerUpdate(event *events.VoiceServerUpdate) {
+    // Voice server changed
+    lavalinkClient.OnVoiceServerUpdate(
+        context.TODO(),
+        event.GuildID,
+        event.Token,
+        event.Endpoint,
+    )
+}
+```
+
+<Accordion title="FAQ">
+  <AccordionItem title="Why isn't audio playing?">
+    Common issues:
+    1. Bot not connected to voice channel
+    2. Voice state updates not forwarded to DisGoLink
+    3. No track loaded on the player
+    4. Player is paused
+    
+    Check:
+    ```go
+    log.Printf("Channel ID: %v", player.ChannelID())
+    log.Printf("Track: %v", player.Track())
+    log.Printf("Paused: %v", player.Paused())
+    log.Printf("State Connected: %v", player.State().Connected)
+    ```
+  </AccordionItem>
+
+  <AccordionItem title="Can I have multiple players per guild?">
+    No, DisGoLink maintains one player per guild. Each guild can only be in one voice channel at a time.
+  </AccordionItem>
+
+  <AccordionItem title="How do I implement a queue?">
+    DisGoLink doesn't include a built-in queue. You need to implement your own queue system and use `onTrackEnd` to play the next track. See the examples in the source code for queue implementations.
+  </AccordionItem>
+
+  <AccordionItem title="What happens when the bot disconnects?">
+    When the bot disconnects from voice, the player is automatically destroyed. You'll need to create a new player when reconnecting.
+  </AccordionItem>
+
+  <AccordionItem title="Can I get the track duration during playback?">
+    Yes:
+    ```go
+    track := player.Track()
+    duration := track.Info.Length
+    position := player.Position()
+    remaining := duration - position
+    ```
+  </AccordionItem>
+</Accordion>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Filters" icon="sliders" href="/guides/filters">
+    Apply audio filters like bass boost and nightcore
+  </Card>
+  <Card title="Error Handling" icon="triangle-exclamation" href="/guides/error-handling">
+    Handle playback errors properly
+  </Card>
+</CardGroup>

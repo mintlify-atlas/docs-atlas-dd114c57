@@ -1,0 +1,328 @@
+---
+title: Events
+description: Lavalink player events and event types
+---
+
+## Event Interface
+
+All Lavalink events implement the `Event` interface and the `Message` interface.
+
+```go
+type Event interface {
+    Op() Op
+    Type() EventType
+    GuildID() snowflake.ID
+}
+```
+
+## EventType
+
+Event type identifiers for different player events.
+
+```go
+type EventType string
+```
+
+### Constants
+
+<ParamField path="EventTypeTrackStart" type="EventType" default="TrackStartEvent">
+  Emitted when a track starts playing
+</ParamField>
+
+<ParamField path="EventTypeTrackEnd" type="EventType" default="TrackEndEvent">
+  Emitted when a track ends
+</ParamField>
+
+<ParamField path="EventTypeTrackException" type="EventType" default="TrackExceptionEvent">
+  Emitted when a track throws an exception
+</ParamField>
+
+<ParamField path="EventTypeTrackStuck" type="EventType" default="TrackStuckEvent">
+  Emitted when a track gets stuck and cannot provide audio
+</ParamField>
+
+<ParamField path="EventTypeWebSocketClosed" type="EventType" default="WebSocketClosedEvent">
+  Emitted when the WebSocket connection to Discord voice is closed
+</ParamField>
+
+<ParamField path="EventTypePlayerPause" type="EventType" default="PlayerPauseEvent">
+  Not actually sent by Lavalink (for client-side use)
+</ParamField>
+
+<ParamField path="EventTypePlayerResume" type="EventType" default="PlayerResumeEvent">
+  Not actually sent by Lavalink (for client-side use)
+</ParamField>
+
+## TrackStartEvent
+
+Emitted when a track starts playing.
+
+<ResponseField name="Track" type="Track">
+  The track that started playing
+</ResponseField>
+
+<ResponseField name="GuildID" type="snowflake.ID">
+  The guild ID where the track started
+</ResponseField>
+
+### Example
+
+```json
+{
+  "op": "event",
+  "type": "TrackStartEvent",
+  "guildId": "123456789012345678",
+  "track": {
+    "encoded": "QAAAjQIAJVJpY2sgQXN0bGV5IC0gTmV2ZXIgR29ubmEgR2l2ZSBZb3UgVXA...",
+    "info": {
+      "identifier": "dQw4w9WgXcQ",
+      "title": "Rick Astley - Never Gonna Give You Up",
+      "author": "Rick Astley",
+      "length": 213000,
+      "isStream": false,
+      "uri": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "sourceName": "youtube",
+      "position": 0
+    }
+  }
+}
+```
+
+## TrackEndEvent
+
+Emitted when a track finishes or stops playing.
+
+<ResponseField name="Track" type="Track">
+  The track that ended
+</ResponseField>
+
+<ResponseField name="Reason" type="TrackEndReason">
+  The reason why the track ended
+</ResponseField>
+
+<ResponseField name="GuildID" type="snowflake.ID">
+  The guild ID where the track ended
+</ResponseField>
+
+### TrackEndReason
+
+<ParamField path="finished" type="TrackEndReason">
+  The track finished playing naturally. `MayStartNext()` returns `true`
+</ParamField>
+
+<ParamField path="loadFailed" type="TrackEndReason">
+  The track failed to load. `MayStartNext()` returns `true`
+</ParamField>
+
+<ParamField path="stopped" type="TrackEndReason">
+  The track was stopped by the user. `MayStartNext()` returns `false`
+</ParamField>
+
+<ParamField path="replaced" type="TrackEndReason">
+  The track was replaced by another track. `MayStartNext()` returns `false`
+</ParamField>
+
+<ParamField path="cleanup" type="TrackEndReason">
+  The player was cleaned up. `MayStartNext()` returns `false`
+</ParamField>
+
+### Example
+
+```json
+{
+  "op": "event",
+  "type": "TrackEndEvent",
+  "guildId": "123456789012345678",
+  "track": { /* ... */ },
+  "reason": "finished"
+}
+```
+
+### Usage
+
+```go
+if event.Reason.MayStartNext() {
+    // Start the next track in the queue
+}
+```
+
+## TrackExceptionEvent
+
+Emitted when a track encounters an error during playback.
+
+<ResponseField name="Track" type="Track">
+  The track that threw the exception
+</ResponseField>
+
+<ResponseField name="Exception" type="Exception">
+  Information about the exception
+  
+  <Expandable title="Exception fields">
+    <ResponseField name="Message" type="string">
+      The error message
+    </ResponseField>
+    
+    <ResponseField name="Severity" type="Severity">
+      The severity of the exception (`common`, `suspicious`, or `fault`)
+    </ResponseField>
+    
+    <ResponseField name="Cause" type="string">
+      The cause of the exception
+    </ResponseField>
+    
+    <ResponseField name="CauseStackTrace" type="string">
+      Stack trace of the exception cause
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="GuildID" type="snowflake.ID">
+  The guild ID where the exception occurred
+</ResponseField>
+
+### Example
+
+```json
+{
+  "op": "event",
+  "type": "TrackExceptionEvent",
+  "guildId": "123456789012345678",
+  "track": { /* ... */ },
+  "exception": {
+    "message": "Failed to decode track",
+    "severity": "common",
+    "cause": "java.io.IOException",
+    "causeStackTrace": "..."
+  }
+}
+```
+
+## TrackStuckEvent
+
+Emitted when a track gets stuck and cannot provide audio data.
+
+<ResponseField name="Track" type="Track">
+  The track that got stuck
+</ResponseField>
+
+<ResponseField name="Threshold" type="Duration">
+  The wait threshold in milliseconds that was exceeded
+</ResponseField>
+
+<ResponseField name="GuildID" type="snowflake.ID">
+  The guild ID where the track got stuck
+</ResponseField>
+
+### Example
+
+```json
+{
+  "op": "event",
+  "type": "TrackStuckEvent",
+  "guildId": "123456789012345678",
+  "track": { /* ... */ },
+  "thresholdMs": 5000
+}
+```
+
+## WebSocketClosedEvent
+
+Emitted when the WebSocket connection to Discord voice is closed.
+
+<ResponseField name="Code" type="int">
+  Discord voice close code
+</ResponseField>
+
+<ResponseField name="Reason" type="string">
+  The reason for closure
+</ResponseField>
+
+<ResponseField name="ByRemote" type="bool">
+  Whether the connection was closed by Discord (true) or by the client (false)
+</ResponseField>
+
+<ResponseField name="GuildID" type="snowflake.ID">
+  The guild ID where the connection was closed
+</ResponseField>
+
+### Example
+
+```json
+{
+  "op": "event",
+  "type": "WebSocketClosedEvent",
+  "guildId": "123456789012345678",
+  "code": 4014,
+  "reason": "Disconnected from voice channel",
+  "byRemote": true
+}
+```
+
+## PlayerPauseEvent
+
+Client-side event for when a player is paused. This is **not sent by Lavalink** but can be used in your client application.
+
+<ResponseField name="GuildID" type="snowflake.ID">
+  The guild ID where the player was paused
+</ResponseField>
+
+## PlayerResumeEvent
+
+Client-side event for when a player is resumed. This is **not sent by Lavalink** but can be used in your client application.
+
+<ResponseField name="GuildID" type="snowflake.ID">
+  The guild ID where the player was resumed
+</ResponseField>
+
+## UnknownEvent
+
+Handles unknown or plugin-specific event types that aren't part of the standard Lavalink protocol.
+
+<ResponseField name="Type_" type="EventType">
+  The event type of the unknown event
+</ResponseField>
+
+<ResponseField name="GuildID_" type="snowflake.ID">
+  The guild ID for this event
+</ResponseField>
+
+<ResponseField name="Data" type="json.RawMessage">
+  Raw JSON data of the entire event for custom parsing
+</ResponseField>
+
+### Usage
+
+This allows you to handle custom events from Lavalink plugins:
+
+```go
+if unknownEvent, ok := event.(UnknownEvent); ok {
+    // Handle custom event type
+    var customData MyCustomEventData
+    if err := json.Unmarshal(unknownEvent.Data, &customData); err != nil {
+        // Handle error
+    }
+}
+```
+
+## Handling Events
+
+```go
+switch evt := message.(type) {
+case lavalink.TrackStartEvent:
+    fmt.Printf("Track started: %s\n", evt.Track.Info.Title)
+    
+case lavalink.TrackEndEvent:
+    if evt.Reason.MayStartNext() {
+        // Play next track
+    }
+    
+case lavalink.TrackExceptionEvent:
+    fmt.Printf("Track error: %s\n", evt.Exception.Message)
+    
+case lavalink.TrackStuckEvent:
+    fmt.Printf("Track stuck for %dms\n", evt.Threshold)
+    
+case lavalink.WebSocketClosedEvent:
+    fmt.Printf("Voice connection closed: %s\n", evt.Reason)
+}
+```

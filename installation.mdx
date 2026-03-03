@@ -1,0 +1,248 @@
+---
+title: Installation
+description: Install DisGoLink and set up your development environment for building Discord music bots
+---
+
+# Installation
+
+Get DisGoLink installed and ready for building your Discord music bot.
+
+## Prerequisites
+
+Before installing DisGoLink, ensure you have the following:
+
+<Steps>
+  <Step title="Go 1.21 or higher">
+    DisGoLink requires Go 1.21+. Check your Go version:
+    
+    ```bash
+    go version
+    ```
+    
+    If you need to install or update Go, visit [golang.org/doc/install](https://golang.org/doc/install).
+  </Step>
+  
+  <Step title="A Discord Bot Application">
+    You'll need a Discord bot token. Create a bot at the [Discord Developer Portal](https://discord.com/developers/applications) if you haven't already.
+    
+    <Note>
+    Make sure to enable the "Server Members Intent" and "Message Content Intent" in your bot's settings if needed.
+    </Note>
+  </Step>
+  
+  <Step title="A Running Lavalink Server">
+    DisGoLink connects to a Lavalink server to handle audio processing. You can:
+    
+    - [Download and run Lavalink locally](https://github.com/freyacodes/Lavalink/releases)
+    - Use a hosted Lavalink service
+    - Run Lavalink in Docker
+    
+    <Warning>
+    DisGoLink requires **Lavalink 4.0.0 or higher**. Earlier versions are not compatible.
+    </Warning>
+  </Step>
+</Steps>
+
+## Install DisGoLink
+
+Install DisGoLink v3 using Go modules:
+
+```bash
+go get github.com/disgoorg/disgolink/v3
+```
+
+This command downloads DisGoLink and adds it to your `go.mod` file.
+
+## Package Structure
+
+DisGoLink consists of two main packages:
+
+<CodeGroup>
+
+```go Main Client Package
+import (
+    "github.com/disgoorg/disgolink/v3/disgolink"
+    "github.com/disgoorg/snowflake/v2"
+)
+
+// Create a new Lavalink client
+var userID = snowflake.ID(1234567890)
+lavalinkClient := disgolink.New(userID)
+```
+
+```go Lavalink Protocol Package
+import (
+    "github.com/disgoorg/disgolink/v3/lavalink"
+)
+
+// Access Lavalink protocol types
+var track lavalink.Track
+var playlist lavalink.Playlist
+```
+
+</CodeGroup>
+
+### `disgolink` Package
+
+The high-level client interface. This is where you'll:
+- Create and manage the Lavalink client
+- Add and configure nodes
+- Create and control players
+- Register event listeners
+- Handle plugins
+
+### `lavalink` Package
+
+Low-level protocol types and structures. This package contains:
+- Track and playlist types
+- Player state structures
+- Event message types
+- Filter and effect definitions
+- REST API request/response types
+
+## Verify Installation
+
+Create a simple test file to verify everything is installed correctly:
+
+```go test.go
+package main
+
+import (
+    "fmt"
+    
+    "github.com/disgoorg/disgolink/v3/disgolink"
+    "github.com/disgoorg/snowflake/v2"
+)
+
+func main() {
+    // Create a client
+    client := disgolink.New(snowflake.ID(123456789))
+    
+    fmt.Println("DisGoLink installed successfully!")
+    fmt.Printf("DisGoLink version: %s\n", disgolink.Version)
+    
+    // Clean up
+    client.Close()
+}
+```
+
+Run the test:
+
+```bash
+go run test.go
+```
+
+You should see:
+
+```
+DisGoLink installed successfully!
+DisGoLink version: v3.x.x
+```
+
+## Additional Dependencies
+
+Depending on your Discord library choice, you'll need to install it as well:
+
+<CodeGroup>
+
+```bash DisGo (Recommended)
+go get github.com/disgoorg/disgo
+```
+
+```bash DiscordGo
+go get github.com/bwmarrin/discordgo
+```
+
+```bash Arikawa
+go get github.com/diamondburned/arikawa/v3
+```
+
+</CodeGroup>
+
+<Info>
+DisGoLink is designed to work best with [DisGo](https://github.com/disgoorg/disgo) as both libraries use the same Snowflake implementation, avoiding type conversion overhead.
+</Info>
+
+## Optional: Install Plugins
+
+Extend DisGoLink with official plugins:
+
+```bash
+# SponsorBlock support
+go get github.com/disgoorg/sponsorblock-plugin
+
+# Advanced queue management
+go get github.com/disgoorg/lavaqueue-plugin
+
+# Additional audio sources
+go get github.com/disgoorg/lavasrc-plugin
+
+# Synchronized lyrics
+go get github.com/disgoorg/lavalyrics-plugin
+
+# Enhanced search
+go get github.com/disgoorg/lavasearch-plugin
+```
+
+## Set Up Lavalink Server
+
+If you haven't set up a Lavalink server yet, here's a quick Docker setup:
+
+```yaml docker-compose.yml
+version: '3.8'
+
+services:
+  lavalink:
+    image: ghcr.io/lavalink-devs/lavalink:4
+    container_name: lavalink
+    restart: unless-stopped
+    environment:
+      - _JAVA_OPTIONS=-Xmx2G
+      - SERVER_PORT=2333
+      - LAVALINK_SERVER_PASSWORD=youshallnotpass
+    volumes:
+      - ./application.yml:/opt/Lavalink/application.yml
+    ports:
+      - "2333:2333"
+```
+
+Start Lavalink:
+
+```bash
+docker-compose up -d
+```
+
+## Troubleshooting
+
+### Module Resolution Issues
+
+If you encounter module resolution errors:
+
+```bash
+go mod tidy
+go mod download
+```
+
+### Version Conflicts
+
+Ensure you're using DisGoLink v3:
+
+```bash
+go get github.com/disgoorg/disgolink/v3@latest
+```
+
+### Snowflake Type Errors
+
+Make sure you're importing the correct Snowflake package:
+
+```go
+import "github.com/disgoorg/snowflake/v2"
+```
+
+## Next Steps
+
+Now that DisGoLink is installed, you're ready to build your first music bot!
+
+<Card title="Next: Quickstart" icon="rocket" href="/quickstart">
+  Learn how to create a working Discord music bot with DisGoLink
+</Card>

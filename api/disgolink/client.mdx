@@ -1,0 +1,411 @@
+---
+title: Client
+description: The main client interface for managing nodes, players, events, and plugins
+---
+
+## Client Interface
+
+The `Client` interface is the core of disgolink, managing Lavalink nodes, players, events, and plugins.
+
+### Creating a Client
+
+<ParamField path="userID" type="snowflake.ID" required>
+  The Discord bot's user ID
+</ParamField>
+
+<ParamField path="opts" type="...ConfigOpt">
+  Optional configuration options
+</ParamField>
+
+```go
+func New(userID snowflake.ID, opts ...ConfigOpt) Client
+```
+
+**Example:**
+```go
+client := disgolink.New(botUserID,
+    disgolink.WithLogger(logger),
+    disgolink.WithListeners(myListener),
+)
+```
+
+## Configuration Options
+
+Configure the client using these `ConfigOpt` functions:
+
+### WithLogger
+
+<ParamField path="logger" type="*slog.Logger" required>
+  Custom logger for the client
+</ParamField>
+
+```go
+func WithLogger(logger *slog.Logger) ConfigOpt
+```
+
+### WithHTTPClient
+
+<ParamField path="httpClient" type="*http.Client" required>
+  Custom HTTP client for REST requests
+</ParamField>
+
+```go
+func WithHTTPClient(httpClient *http.Client) ConfigOpt
+```
+
+### WithListeners
+
+<ParamField path="listeners" type="...EventListener" required>
+  Event listeners to register on client creation
+</ParamField>
+
+```go
+func WithListeners(listeners ...EventListener) ConfigOpt
+```
+
+### WithListenerFunc
+
+<ParamField path="listenerFunc" type="func(p Player, e E)" required>
+  A function-based event listener for specific event types
+</ParamField>
+
+```go
+func WithListenerFunc[E lavalink.Message](listenerFunc func(p Player, e E)) ConfigOpt
+```
+
+**Example:**
+```go
+client := disgolink.New(botUserID,
+    disgolink.WithListenerFunc(func(p disgolink.Player, e lavalink.TrackStartEvent) {
+        fmt.Printf("Track started: %s\n", e.Track.Info.Title)
+    }),
+)
+```
+
+### WithPlugins
+
+<ParamField path="plugins" type="...Plugin" required>
+  Plugins to register on client creation
+</ParamField>
+
+```go
+func WithPlugins(plugins ...Plugin) ConfigOpt
+```
+
+## Node Management
+
+### AddNode
+
+Adds and connects to a new Lavalink node.
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for the operation
+</ParamField>
+
+<ParamField path="config" type="NodeConfig" required>
+  Configuration for the node connection
+</ParamField>
+
+<ResponseField name="Node" type="Node">
+  The created node instance
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Error if connection fails
+</ResponseField>
+
+```go
+AddNode(ctx context.Context, config NodeConfig) (Node, error)
+```
+
+**Example:**
+```go
+node, err := client.AddNode(ctx, disgolink.NodeConfig{
+    Name:     "main",
+    Address:  "localhost:2333",
+    Password: "youshallnotpass",
+    Secure:   false,
+})
+```
+
+### ForNodes
+
+Iterates over all registered nodes.
+
+<ParamField path="nodeFunc" type="func(node Node)" required>
+  Function called for each node
+</ParamField>
+
+```go
+ForNodes(nodeFunc func(node Node))
+```
+
+### Node
+
+Retrieves a specific node by name.
+
+<ParamField path="name" type="string" required>
+  The name of the node to retrieve
+</ParamField>
+
+<ResponseField name="Node" type="Node">
+  The node with the specified name, or nil if not found
+</ResponseField>
+
+```go
+Node(name string) Node
+```
+
+### BestNode
+
+Returns the node with the best stats (lowest load).
+
+<ResponseField name="Node" type="Node">
+  The best available node
+</ResponseField>
+
+```go
+BestNode() Node
+```
+
+### RemoveNode
+
+Removes and disconnects a node.
+
+<ParamField path="name" type="string" required>
+  The name of the node to remove
+</ParamField>
+
+```go
+RemoveNode(name string)
+```
+
+## Player Management
+
+### Player
+
+Gets or creates a player for a guild on the best available node.
+
+<ParamField path="guildID" type="snowflake.ID" required>
+  The Discord guild ID
+</ParamField>
+
+<ResponseField name="Player" type="Player">
+  The player instance for the guild
+</ResponseField>
+
+```go
+Player(guildID snowflake.ID) Player
+```
+
+### PlayerOnNode
+
+Gets or creates a player on a specific node.
+
+<ParamField path="node" type="Node" required>
+  The node to create the player on
+</ParamField>
+
+<ParamField path="guildID" type="snowflake.ID" required>
+  The Discord guild ID
+</ParamField>
+
+<ResponseField name="Player" type="Player">
+  The player instance for the guild
+</ResponseField>
+
+```go
+PlayerOnNode(node Node, guildID snowflake.ID) Player
+```
+
+### ExistingPlayer
+
+Returns an existing player without creating a new one.
+
+<ParamField path="guildID" type="snowflake.ID" required>
+  The Discord guild ID
+</ParamField>
+
+<ResponseField name="Player" type="Player">
+  The existing player, or nil if not found
+</ResponseField>
+
+```go
+ExistingPlayer(guildID snowflake.ID) Player
+```
+
+### RemovePlayer
+
+Removes a player from the client's registry.
+
+<ParamField path="guildID" type="snowflake.ID" required>
+  The Discord guild ID
+</ParamField>
+
+```go
+RemovePlayer(guildID snowflake.ID)
+```
+
+### ForPlayers
+
+Iterates over all active players.
+
+<ParamField path="playerFunc" type="func(player Player)" required>
+  Function called for each player
+</ParamField>
+
+```go
+ForPlayers(playerFunc func(player Player))
+```
+
+## Event Management
+
+### EmitEvent
+
+Manually emits an event to all registered listeners.
+
+<ParamField path="player" type="Player" required>
+  The player associated with the event (can be nil)
+</ParamField>
+
+<ParamField path="event" type="lavalink.Message" required>
+  The event to emit
+</ParamField>
+
+```go
+EmitEvent(player Player, event lavalink.Message)
+```
+
+### AddListeners
+
+Registers one or more event listeners.
+
+<ParamField path="listeners" type="...EventListener" required>
+  Event listeners to add
+</ParamField>
+
+```go
+AddListeners(listeners ...EventListener)
+```
+
+### RemoveListeners
+
+Unregisters event listeners.
+
+<ParamField path="listeners" type="...EventListener" required>
+  Event listeners to remove
+</ParamField>
+
+```go
+RemoveListeners(listeners ...EventListener)
+```
+
+## Plugin Management
+
+### AddPlugins
+
+Registers one or more plugins.
+
+<ParamField path="plugins" type="...Plugin" required>
+  Plugins to add
+</ParamField>
+
+```go
+AddPlugins(plugins ...Plugin)
+```
+
+### ForPlugins
+
+Iterates over all registered plugins.
+
+<ParamField path="pluginFunc" type="func(plugin Plugin)" required>
+  Function called for each plugin
+</ParamField>
+
+```go
+ForPlugins(pluginFunc func(plugin Plugin))
+```
+
+### RemovePlugins
+
+Unregisters plugins.
+
+<ParamField path="plugins" type="...Plugin" required>
+  Plugins to remove
+</ParamField>
+
+```go
+RemovePlugins(plugins ...Plugin)
+```
+
+## Voice State Updates
+
+### OnVoiceServerUpdate
+
+Handles Discord VOICE_SERVER_UPDATE events.
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for the operation
+</ParamField>
+
+<ParamField path="guildID" type="snowflake.ID" required>
+  The guild ID from the event
+</ParamField>
+
+<ParamField path="token" type="string" required>
+  The voice token from the event
+</ParamField>
+
+<ParamField path="endpoint" type="string" required>
+  The voice endpoint from the event
+</ParamField>
+
+```go
+OnVoiceServerUpdate(ctx context.Context, guildID snowflake.ID, token string, endpoint string)
+```
+
+### OnVoiceStateUpdate
+
+Handles Discord VOICE_STATE_UPDATE events.
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for the operation
+</ParamField>
+
+<ParamField path="guildID" type="snowflake.ID" required>
+  The guild ID from the event
+</ParamField>
+
+<ParamField path="channelID" type="*snowflake.ID" required>
+  The voice channel ID (nil if disconnected)
+</ParamField>
+
+<ParamField path="sessionID" type="string" required>
+  The voice session ID from the event
+</ParamField>
+
+```go
+OnVoiceStateUpdate(ctx context.Context, guildID snowflake.ID, channelID *snowflake.ID, sessionID string)
+```
+
+## Other Methods
+
+### UserID
+
+Returns the bot's user ID.
+
+<ResponseField name="snowflake.ID" type="snowflake.ID">
+  The bot's Discord user ID
+</ResponseField>
+
+```go
+UserID() snowflake.ID
+```
+
+### Close
+
+Closes all node connections and shuts down the client.
+
+```go
+Close()
+```

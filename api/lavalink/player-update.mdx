@@ -1,0 +1,470 @@
+---
+title: Player Update
+description: Update player state and configuration
+---
+
+## PlayerUpdate
+
+The `PlayerUpdate` struct is used to update a player's state.
+
+```go
+type PlayerUpdate struct {
+    Track     *PlayerUpdateTrack `json:"track,omitempty"`
+    Position  *Duration          `json:"position,omitempty"`
+    EndTime   *Duration          `json:"endTime,omitempty"`
+    Volume    *int               `json:"volume,omitempty"`
+    Paused    *bool              `json:"paused,omitempty"`
+    Voice     *VoiceState        `json:"voice,omitempty"`
+    Filters   *Filters           `json:"filters,omitempty"`
+    NoReplace bool               `json:"-"`
+}
+```
+
+<ParamField path="Track" type="*PlayerUpdateTrack">
+  The track to play or stop (see PlayerUpdateTrack below)
+</ParamField>
+
+<ParamField path="Position" type="*Duration">
+  The position to seek to in milliseconds
+</ParamField>
+
+<ParamField path="EndTime" type="*Duration">
+  The time at which the track should stop playing in milliseconds
+</ParamField>
+
+<ParamField path="Volume" type="*int">
+  The player volume from 0 to 1000 (100 = 100%)
+</ParamField>
+
+<ParamField path="Paused" type="*bool">
+  Whether the player is paused
+</ParamField>
+
+<ParamField path="Voice" type="*VoiceState">
+  Voice connection state (see VoiceState below)
+</ParamField>
+
+<ParamField path="Filters" type="*Filters">
+  Audio filters to apply (see Filters page)
+</ParamField>
+
+<ParamField path="NoReplace" type="bool">
+  If true and a track is already playing, the update will be ignored
+</ParamField>
+
+## PlayerUpdateTrack
+
+Specifies which track to play or how to modify the current track.
+
+```go
+type PlayerUpdateTrack struct {
+    Encoded    *json.Nullable[string] `json:"encoded,omitempty"`
+    Identifier *string                `json:"identifier,omitempty"`
+    UserData   any                    `json:"userData,omitempty"`
+}
+```
+
+<ParamField path="Encoded" type="*json.Nullable[string]">
+  The base64-encoded track to play. Use `null` to stop the current track.
+</ParamField>
+
+<ParamField path="Identifier" type="*string">
+  Alternative to Encoded: track identifier to play
+</ParamField>
+
+<ParamField path="UserData" type="any">
+  Custom user data to attach to the track
+</ParamField>
+
+## VoiceState
+
+Contains information about the Discord voice connection.
+
+<ParamField path="Token" type="string" required>
+  The voice token from Discord's VOICE_SERVER_UPDATE event
+</ParamField>
+
+<ParamField path="Endpoint" type="string" required>
+  The voice endpoint from Discord's VOICE_SERVER_UPDATE event
+</ParamField>
+
+<ParamField path="SessionID" type="string" required>
+  The voice session ID from Discord's VOICE_STATE_UPDATE event
+</ParamField>
+
+<ParamField path="ChannelID" type="snowflake.ID" required>
+  The voice channel ID the bot is connected to
+</ParamField>
+
+## PlayerUpdateOpt Functions
+
+The recommended way to create player updates is using the option functions:
+
+### Track Control
+
+#### WithTrack
+
+```go
+func WithTrack(track Track) PlayerUpdateOpt
+```
+
+Sets the track to play, including its encoded data and user data.
+
+```go
+err := client.UpdatePlayer(
+    ctx,
+    guildID,
+    lavalink.WithTrack(track),
+)
+```
+
+#### WithEncodedTrack
+
+```go
+func WithEncodedTrack(encodedTrack string) PlayerUpdateOpt
+```
+
+Sets the track to play using its base64-encoded data.
+
+```go
+err := client.UpdatePlayer(
+    ctx,
+    guildID,
+    lavalink.WithEncodedTrack(track.Encoded),
+)
+```
+
+#### WithNullTrack
+
+```go
+func WithNullTrack() PlayerUpdateOpt
+```
+
+Stops the current track.
+
+```go
+err := client.UpdatePlayer(
+    ctx,
+    guildID,
+    lavalink.WithNullTrack(),
+)
+```
+
+#### WithTrackIdentifier
+
+```go
+func WithTrackIdentifier(identifier string) PlayerUpdateOpt
+```
+
+Sets the track using its identifier instead of encoded data.
+
+```go
+err := client.UpdatePlayer(
+    ctx,
+    guildID,
+    lavalink.WithTrackIdentifier("dQw4w9WgXcQ"),
+)
+```
+
+#### WithTrackUserData
+
+```go
+func WithTrackUserData(userData any) PlayerUpdateOpt
+```
+
+Attaches custom user data to the track.
+
+```go
+type QueueInfo struct {
+    RequestedBy string `json:"requestedBy"`
+}
+
+err := client.UpdatePlayer(
+    ctx,
+    guildID,
+    lavalink.WithTrack(track),
+    lavalink.WithTrackUserData(QueueInfo{
+        RequestedBy: "User#1234",
+    }),
+)
+```
+
+### Playback Control
+
+#### WithPosition
+
+```go
+func WithPosition(position Duration) PlayerUpdateOpt
+```
+
+Seeks to a specific position in the track.
+
+```go
+err := client.UpdatePlayer(
+    ctx,
+    guildID,
+    lavalink.WithPosition(30 * lavalink.Second), // Seek to 30 seconds
+)
+```
+
+#### WithEndTime
+
+```go
+func WithEndTime(endTime Duration) PlayerUpdateOpt
+```
+
+Sets when the track should stop playing.
+
+```go
+err := client.UpdatePlayer(
+    ctx,
+    guildID,
+    lavalink.WithEndTime(60 * lavalink.Second), // Stop at 1 minute
+)
+```
+
+#### WithVolume
+
+```go
+func WithVolume(volume int) PlayerUpdateOpt
+```
+
+Sets the player volume (0-1000, where 100 is 100%).
+
+```go
+err := client.UpdatePlayer(
+    ctx,
+    guildID,
+    lavalink.WithVolume(75), // 75% volume
+)
+```
+
+#### WithPaused
+
+```go
+func WithPaused(paused bool) PlayerUpdateOpt
+```
+
+Pauses or resumes playback.
+
+```go
+// Pause
+err := client.UpdatePlayer(ctx, guildID, lavalink.WithPaused(true))
+
+// Resume
+err := client.UpdatePlayer(ctx, guildID, lavalink.WithPaused(false))
+```
+
+### Voice Connection
+
+#### WithVoice
+
+```go
+func WithVoice(voice VoiceState) PlayerUpdateOpt
+```
+
+Updates the voice connection state.
+
+```go
+voiceState := lavalink.VoiceState{
+    Token:     voiceServerUpdate.Token,
+    Endpoint:  voiceServerUpdate.Endpoint,
+    SessionID: voiceStateUpdate.SessionID,
+    ChannelID: channelID,
+}
+
+err := client.UpdatePlayer(
+    ctx,
+    guildID,
+    lavalink.WithVoice(voiceState),
+)
+```
+
+### Audio Effects
+
+#### WithFilters
+
+```go
+func WithFilters(filters Filters) PlayerUpdateOpt
+```
+
+Applies audio filters to the player.
+
+```go
+volume := lavalink.Volume(0.5)
+filters := lavalink.Filters{
+    Volume: &volume,
+}
+
+err := client.UpdatePlayer(
+    ctx,
+    guildID,
+    lavalink.WithFilters(filters),
+)
+```
+
+See the [Filters](/api/lavalink/filters) page for all available filters.
+
+### Track Replacement
+
+#### WithNoReplace
+
+```go
+func WithNoReplace(noReplace bool) PlayerUpdateOpt
+```
+
+When set to `true`, the update will be ignored if a track is already playing.
+
+```go
+err := client.UpdatePlayer(
+    ctx,
+    guildID,
+    lavalink.WithTrack(track),
+    lavalink.WithNoReplace(true), // Don't replace current track
+)
+```
+
+## Creating Player Updates
+
+### Using DefaultPlayerUpdate
+
+```go
+update := lavalink.DefaultPlayerUpdate()
+update.Apply([]lavalink.PlayerUpdateOpt{
+    lavalink.WithTrack(track),
+    lavalink.WithVolume(100),
+    lavalink.WithPaused(false),
+})
+```
+
+### Combining Multiple Options
+
+```go
+err := client.UpdatePlayer(
+    ctx,
+    guildID,
+    lavalink.WithTrack(track),
+    lavalink.WithPosition(0),
+    lavalink.WithVolume(80),
+    lavalink.WithPaused(false),
+    lavalink.WithFilters(lavalink.Filters{
+        Volume: ptr(lavalink.Volume(0.8)),
+    }),
+)
+```
+
+## Common Use Cases
+
+### Play a Track
+
+```go
+err := client.UpdatePlayer(
+    ctx,
+    guildID,
+    lavalink.WithTrack(track),
+)
+```
+
+### Pause Playback
+
+```go
+err := client.UpdatePlayer(
+    ctx,
+    guildID,
+    lavalink.WithPaused(true),
+)
+```
+
+### Resume Playback
+
+```go
+err := client.UpdatePlayer(
+    ctx,
+    guildID,
+    lavalink.WithPaused(false),
+)
+```
+
+### Stop Playback
+
+```go
+err := client.UpdatePlayer(
+    ctx,
+    guildID,
+    lavalink.WithNullTrack(),
+)
+```
+
+### Seek to Position
+
+```go
+err := client.UpdatePlayer(
+    ctx,
+    guildID,
+    lavalink.WithPosition(45 * lavalink.Second),
+)
+```
+
+### Adjust Volume
+
+```go
+err := client.UpdatePlayer(
+    ctx,
+    guildID,
+    lavalink.WithVolume(150), // 150% volume
+)
+```
+
+### Apply Bass Boost
+
+```go
+equalizer := lavalink.Equalizer{}
+equalizer[0] = 0.2  // 25 Hz
+equalizer[1] = 0.15 // 40 Hz
+equalizer[2] = 0.1  // 63 Hz
+
+err := client.UpdatePlayer(
+    ctx,
+    guildID,
+    lavalink.WithFilters(lavalink.Filters{
+        Equalizer: &equalizer,
+    }),
+)
+```
+
+### Connect to Voice Channel
+
+```go
+// First, join the Discord voice channel and get the voice state updates
+// Then update Lavalink with the voice connection info
+
+err := client.UpdatePlayer(
+    ctx,
+    guildID,
+    lavalink.WithVoice(lavalink.VoiceState{
+        Token:     voiceToken,
+        Endpoint:  voiceEndpoint,
+        SessionID: sessionID,
+        ChannelID: channelID,
+    }),
+)
+```
+
+### Play Track with Custom Data
+
+```go
+type RequestInfo struct {
+    UserID    string    `json:"userId"`
+    Timestamp time.Time `json:"timestamp"`
+}
+
+err := client.UpdatePlayer(
+    ctx,
+    guildID,
+    lavalink.WithTrack(track),
+    lavalink.WithTrackUserData(RequestInfo{
+        UserID:    "123456789",
+        Timestamp: time.Now(),
+    }),
+)
+```

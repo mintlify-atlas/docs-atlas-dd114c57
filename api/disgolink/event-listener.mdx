@@ -1,0 +1,315 @@
+---
+title: EventListener
+description: Interface for handling Lavalink events
+---
+
+## EventListener Interface
+
+The `EventListener` interface allows you to handle events from Lavalink, such as track starts, ends, exceptions, and more.
+
+```go
+type EventListener interface {
+    OnEvent(player Player, event lavalink.Message)
+}
+```
+
+## Creating Event Listeners
+
+### Function-Based Listeners
+
+Create type-safe event listeners using `NewListenerFunc`:
+
+```go
+func NewListenerFunc[E lavalink.Message](f func(p Player, e E)) EventListener
+```
+
+<ParamField path="f" type="func(p Player, e E)" required>
+  Function to handle events of type E
+</ParamField>
+
+<ResponseField name="EventListener" type="EventListener">
+  An event listener that only triggers for events of type E
+</ResponseField>
+
+**Example:**
+
+```go
+// Handle track start events
+trackStartListener := disgolink.NewListenerFunc(func(p disgolink.Player, e lavalink.TrackStartEvent) {
+    fmt.Printf("Track started in guild %d: %s\n", p.GuildID(), e.Track.Info.Title)
+})
+
+// Handle track end events
+trackEndListener := disgolink.NewListenerFunc(func(p disgolink.Player, e lavalink.TrackEndEvent) {
+    fmt.Printf("Track ended: %s (reason: %s)\n", e.Track.Info.Title, e.Reason)
+    
+    if e.Reason == lavalink.TrackEndReasonFinished {
+        // Load next track
+    }
+})
+
+client := disgolink.New(userID,
+    disgolink.WithListeners(trackStartListener, trackEndListener),
+)
+```
+
+### Inline Listener Functions
+
+Use `WithListenerFunc` for inline listener configuration:
+
+```go
+func WithListenerFunc[E lavalink.Message](listenerFunc func(p Player, e E)) ConfigOpt
+```
+
+**Example:**
+
+```go
+client := disgolink.New(userID,
+    disgolink.WithListenerFunc(func(p disgolink.Player, e lavalink.TrackStartEvent) {
+        log.Printf("Playing: %s\n", e.Track.Info.Title)
+    }),
+    disgolink.WithListenerFunc(func(p disgolink.Player, e lavalink.TrackExceptionEvent) {
+        log.Printf("Track error: %s\n", e.Exception.Message)
+    }),
+)
+```
+
+### Custom Listener Implementation
+
+Implement the `EventListener` interface directly for more control:
+
+```go
+type MyListener struct {
+    // your fields
+}
+
+func (l *MyListener) OnEvent(player disgolink.Player, event lavalink.Message) {
+    switch e := event.(type) {
+    case lavalink.TrackStartEvent:
+        l.handleTrackStart(player, e)
+    case lavalink.TrackEndEvent:
+        l.handleTrackEnd(player, e)
+    case lavalink.TrackExceptionEvent:
+        l.handleTrackException(player, e)
+    case lavalink.TrackStuckEvent:
+        l.handleTrackStuck(player, e)
+    case lavalink.WebSocketClosedEvent:
+        l.handleWebSocketClosed(player, e)
+    }
+}
+
+func (l *MyListener) handleTrackStart(p disgolink.Player, e lavalink.TrackStartEvent) {
+    // Handle track start
+}
+
+// Implement other handlers...
+```
+
+## Event Types
+
+Lavalink provides several event types you can listen for:
+
+### TrackStartEvent
+
+Emitted when a track starts playing.
+
+```go
+type TrackStartEvent struct {
+    GuildID_ snowflake.ID
+    Track    Track
+}
+```
+
+### TrackEndEvent
+
+Emitted when a track ends.
+
+```go
+type TrackEndEvent struct {
+    GuildID_ snowflake.ID
+    Track    Track
+    Reason   TrackEndReason
+}
+```
+
+**End Reasons:**
+- `TrackEndReasonFinished` - Track finished playing
+- `TrackEndReasonLoadFailed` - Track failed to load
+- `TrackEndReasonStopped` - Track was stopped
+- `TrackEndReasonReplaced` - Track was replaced
+- `TrackEndReasonCleanup` - Cleanup
+
+### TrackExceptionEvent
+
+Emitted when a track encounters an exception.
+
+```go
+type TrackExceptionEvent struct {
+    GuildID_  snowflake.ID
+    Track     Track
+    Exception Exception
+}
+```
+
+### TrackStuckEvent
+
+Emitted when a track gets stuck.
+
+```go
+type TrackStuckEvent struct {
+    GuildID_      snowflake.ID
+    Track         Track
+    ThresholdMs   Duration
+}
+```
+
+### WebSocketClosedEvent
+
+Emitted when the voice WebSocket connection is closed.
+
+```go
+type WebSocketClosedEvent struct {
+    GuildID_ snowflake.ID
+    Code     int
+    Reason   string
+    ByRemote bool
+}
+```
+
+### PlayerUpdateMessage
+
+Emitted when player state updates.
+
+```go
+type PlayerUpdateMessage struct {
+    GuildID snowflake.ID
+    State   PlayerState
+}
+```
+
+### StatsMessage
+
+Emitted periodically with server statistics.
+
+```go
+type StatsMessage struct {
+    Players        int
+    PlayingPlayers int
+    Uptime         Duration
+    Memory         Memory
+    CPU            CPU
+    FrameStats     *FrameStats
+}
+```
+
+<Note>
+  StatsMessage events have a `nil` player parameter since they're server-wide.
+</Note>
+
+## Managing Listeners at Runtime
+
+### Add Listeners
+
+```go
+listener := disgolink.NewListenerFunc(func(p disgolink.Player, e lavalink.TrackStartEvent) {
+    fmt.Printf("Track: %s\n", e.Track.Info.Title)
+})
+
+client.AddListeners(listener)
+```
+
+### Remove Listeners
+
+```go
+client.RemoveListeners(listener)
+```
+
+## Complete Example
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+
+    "github.com/disgoorg/disgolink/v3"
+    "github.com/disgoorg/disgolink/v3/lavalink"
+    "github.com/disgoorg/snowflake/v2"
+)
+
+type QueueManager struct {
+    queues map[snowflake.ID][]lavalink.Track
+}
+
+func (qm *QueueManager) OnEvent(player disgolink.Player, event lavalink.Message) {
+    switch e := event.(type) {
+    case lavalink.TrackStartEvent:
+        log.Printf("[%d] Started: %s", player.GuildID(), e.Track.Info.Title)
+
+    case lavalink.TrackEndEvent:
+        if e.Reason == lavalink.TrackEndReasonFinished {
+            qm.playNext(player)
+        }
+
+    case lavalink.TrackExceptionEvent:
+        log.Printf("[%d] Exception: %s - %s", 
+            player.GuildID(), e.Track.Info.Title, e.Exception.Message)
+        qm.playNext(player)
+
+    case lavalink.TrackStuckEvent:
+        log.Printf("[%d] Track stuck: %s", player.GuildID(), e.Track.Info.Title)
+        qm.playNext(player)
+
+    case lavalink.WebSocketClosedEvent:
+        log.Printf("[%d] WebSocket closed: %d - %s", 
+            player.GuildID(), e.Code, e.Reason)
+    }
+}
+
+func (qm *QueueManager) playNext(player disgolink.Player) {
+    queue, ok := qm.queues[player.GuildID()]
+    if !ok || len(queue) == 0 {
+        return
+    }
+
+    nextTrack := queue[0]
+    qm.queues[player.GuildID()] = queue[1:]
+
+    if err := player.Update(ctx, lavalink.WithTrack(nextTrack)); err != nil {
+        log.Printf("Failed to play next track: %v", err)
+    }
+}
+
+func main() {
+    queueManager := &QueueManager{
+        queues: make(map[snowflake.ID][]lavalink.Track),
+    }
+
+    client := disgolink.New(userID,
+        disgolink.WithListeners(queueManager),
+        disgolink.WithListenerFunc(func(p disgolink.Player, e lavalink.PlayerPauseEvent) {
+            fmt.Printf("Player paused in guild %d\n", p.GuildID())
+        }),
+        disgolink.WithListenerFunc(func(p disgolink.Player, e lavalink.PlayerResumeEvent) {
+            fmt.Printf("Player resumed in guild %d\n", p.GuildID())
+        }),
+    )
+
+    // Use the client...
+}
+```
+
+## Best Practices
+
+<Tip>
+  Use `NewListenerFunc` for simple, type-safe event handlers. Implement the `EventListener` interface when you need to handle multiple event types or maintain state.
+</Tip>
+
+<Warning>
+  Event handlers run synchronously and can block event processing. Keep handlers fast and offload heavy work to goroutines.
+</Warning>
+
+<Note>
+  The `player` parameter is `nil` for `StatsMessage` events since they represent server-wide statistics rather than player-specific events.
+</Note>

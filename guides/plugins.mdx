@@ -1,0 +1,516 @@
+---
+title: 'Plugins'
+description: 'Extend DisGoLink functionality with Lavalink plugins'
+icon: 'puzzle-piece'
+---
+
+DisGoLink supports plugins to extend functionality beyond core Lavalink features. This guide covers plugin types, registration, and usage.
+
+## Plugin System Overview
+
+DisGoLink defines three types of plugin interfaces:
+
+- **`Plugin`**: Base plugin interface with metadata
+- **`OpPlugin`**: Handles custom WebSocket operations
+- **`EventPlugin`**: Handles custom player events
+
+## Plugin Interfaces
+
+### Base Plugin
+
+All plugins must implement the base interface:
+
+```go
+type Plugin interface {
+    Name() string
+    Version() string
+}
+```
+
+**Example:**
+
+```go
+type MyPlugin struct {}
+
+func (p *MyPlugin) Name() string {
+    return "my-plugin"
+}
+
+func (p *MyPlugin) Version() string {
+    return "1.0.0"
+}
+```
+
+### OpPlugin
+
+Handle custom WebSocket operations from Lavalink:
+
+```go
+type OpPlugin interface {
+    Op() lavalink.Op
+    OnOpInvocation(node Node, data []byte)
+}
+```
+
+**Example:**
+
+```go
+type MyOpPlugin struct {
+    MyPlugin
+}
+
+func (p *MyOpPlugin) Op() lavalink.Op {
+    return "myCustomOp"
+}
+
+func (p *MyOpPlugin) OnOpInvocation(node disgolink.Node, data []byte) {
+    log.Printf("Received op from node %s: %s", node.Config().Name, string(data))
+    
+    // Parse and handle custom data
+    var payload MyCustomPayload
+    if err := json.Unmarshal(data, &payload); err != nil {
+        log.Printf("Failed to parse op: %v", err)
+        return
+    }
+    
+    // Handle the operation
+}
+```
+
+### EventPlugin
+
+Handle custom player events:
+
+```go
+type EventPlugin interface {
+    Event() lavalink.EventType
+    OnEventInvocation(player Player, data []byte)
+}
+```
+
+**Example:**
+
+```go
+type MyEventPlugin struct {
+    MyPlugin
+}
+
+func (p *MyEventPlugin) Event() lavalink.EventType {
+    return "MyCustomEvent"
+}
+
+func (p *MyEventPlugin) OnEventInvocation(player disgolink.Player, data []byte) {
+    log.Printf("Custom event for guild %s", player.GuildID())
+    
+    // Parse and handle event data
+    var event MyCustomEvent
+    if err := json.Unmarshal(data, &event); err != nil {
+        log.Printf("Failed to parse event: %v", err)
+        return
+    }
+    
+    // Handle the event
+}
+```
+
+### PluginEventHandler
+
+Optional interface for lifecycle hooks:
+
+```go
+type PluginEventHandler interface {
+    OnNodeOpen(node Node)
+    OnNodeClose(node Node)
+    OnNodeMessageIn(node Node, data []byte)
+    OnNewPlayer(player Player)
+    OnDestroyPlayer(player Player)
+}
+```
+
+**Example:**
+
+```go
+type MyLifecyclePlugin struct {
+    MyPlugin
+}
+
+func (p *MyLifecyclePlugin) OnNodeOpen(node disgolink.Node) {
+    log.Printf("Node %s connected", node.Config().Name)
+}
+
+func (p *MyLifecyclePlugin) OnNodeClose(node disgolink.Node) {
+    log.Printf("Node %s disconnected", node.Config().Name)
+}
+
+func (p *MyLifecyclePlugin) OnNodeMessageIn(node disgolink.Node, data []byte) {
+    // Inspect all incoming WebSocket messages
+}
+
+func (p *MyLifecyclePlugin) OnNewPlayer(player disgolink.Player) {
+    log.Printf("Player created for guild %s", player.GuildID())
+}
+
+func (p *MyLifecyclePlugin) OnDestroyPlayer(player disgolink.Player) {
+    log.Printf("Player destroyed for guild %s", player.GuildID())
+}
+```
+
+## Registering Plugins
+
+Plugins are registered when creating the DisGoLink client:
+
+<Steps>
+  <Step title="Create plugin instance">
+    ```go
+    myPlugin := &MyPlugin{}
+    ```
+  </Step>
+
+  <Step title="Register with client">
+    ```go
+    lavalinkClient := disgolink.New(
+        applicationID,
+        disgolink.WithPlugins(myPlugin),
+    )
+    ```
+  </Step>
+
+  <Step title="Add plugins dynamically">
+    ```go
+    // Add plugins after client creation
+    lavalinkClient.AddPlugins(anotherPlugin)
+    
+    // Remove plugins
+    lavalinkClient.RemovePlugins(myPlugin)
+    ```
+  </Step>
+</Steps>
+
+## Multiple Plugins
+
+Register multiple plugins at once:
+
+```go
+lavalinkClient := disgolink.New(
+    applicationID,
+    disgolink.WithPlugins(
+        &SponsorBlockPlugin{},
+        &LavaQueuePlugin{},
+        &CustomPlugin{},
+    ),
+)
+```
+
+## Iterating Plugins
+
+Access registered plugins:
+
+```go
+lavalinkClient.ForPlugins(func(plugin disgolink.Plugin) {
+    log.Printf("Loaded plugin: %s v%s", plugin.Name(), plugin.Version())
+})
+```
+
+## Available Lavalink Plugins
+
+These popular Lavalink plugins can be integrated with DisGoLink:
+
+### SponsorBlock
+
+Skip sponsored segments in YouTube videos.
+
+**Lavalink Server Setup:**
+```yaml
+plugins:
+  - dependency: "com.github.topi314.sponsorblock:sponsorblock-plugin:3.0.0"
+    repository: "https://maven.topi.wtf/releases"
+```
+
+**DisGoLink Usage:**
+```go
+type SponsorBlockPlugin struct{}
+
+func (p *SponsorBlockPlugin) Name() string {
+    return "sponsorblock-plugin"
+}
+
+func (p *SponsorBlockPlugin) Version() string {
+    return "3.0.0"
+}
+
+func (p *SponsorBlockPlugin) Event() lavalink.EventType {
+    return "SegmentSkipped"
+}
+
+func (p *SponsorBlockPlugin) OnEventInvocation(player disgolink.Player, data []byte) {
+    log.Printf("SponsorBlock skipped segment in guild %s", player.GuildID())
+}
+```
+
+### LavaQueue
+
+Server-side queue management.
+
+**Features:**
+- Persistent queues
+- Shuffle and repeat
+- History tracking
+
+```go
+type LavaQueuePlugin struct{}
+
+func (p *LavaQueuePlugin) Name() string {
+    return "lavaqueue-plugin"
+}
+```
+
+### LavaSrc
+
+Additional audio sources (Spotify, Apple Music, Deezer, Yandex Music).
+
+**Lavalink Server Setup:**
+```yaml
+plugins:
+  - dependency: "com.github.topi314.lavasrc:lavasrc-plugin:4.0.0"
+    repository: "https://maven.topi.wtf/releases"
+```
+
+**DisGoLink Usage:**
+```go
+// Load Spotify tracks
+result, err := node.LoadTracks(ctx, "spsearch:your favorite song")
+
+// Load Apple Music
+result, err := node.LoadTracks(ctx, "amsearch:top hits")
+
+// Load Deezer
+result, err := node.LoadTracks(ctx, "dzsearch:popular music")
+```
+
+### LavaLyrics
+
+Fetch synchronized lyrics for tracks.
+
+**Lavalink Server Setup:**
+```yaml
+plugins:
+  - dependency: "com.github.topi314.lavalyrics:lavalyrics-plugin:1.0.0"
+    repository: "https://maven.topi.wtf/releases"
+```
+
+**DisGoLink Usage:**
+```go
+type LavaLyricsPlugin struct{}
+
+func (p *LavaLyricsPlugin) Name() string {
+    return "lavalyrics-plugin"
+}
+
+func (p *LavaLyricsPlugin) Op() lavalink.Op {
+    return "lyrics"
+}
+
+func (p *LavaLyricsPlugin) OnOpInvocation(node disgolink.Node, data []byte) {
+    // Handle lyrics response
+}
+```
+
+### LavaSearch
+
+Enhanced search capabilities with filtering.
+
+**Lavalink Server Setup:**
+```yaml
+plugins:
+  - dependency: "com.github.topi314.lavasearch:lavasearch-plugin:1.0.0"
+    repository: "https://maven.topi.wtf/releases"
+```
+
+## Creating Custom Plugins
+
+Here's a complete example of a custom plugin:
+
+<Steps>
+  <Step title="Define the plugin structure">
+    ```go
+    package myplugin
+
+    import (
+        "encoding/json"
+        "log"
+
+        "github.com/disgoorg/disgolink/v3/disgolink"
+        "github.com/disgoorg/disgolink/v3/lavalink"
+    )
+
+    type TrackAnalyticsPlugin struct{}
+
+    func NewTrackAnalyticsPlugin() *TrackAnalyticsPlugin {
+        return &TrackAnalyticsPlugin{}
+    }
+    ```
+  </Step>
+
+  <Step title="Implement base interface">
+    ```go
+    func (p *TrackAnalyticsPlugin) Name() string {
+        return "track-analytics"
+    }
+
+    func (p *TrackAnalyticsPlugin) Version() string {
+        return "1.0.0"
+    }
+    ```
+  </Step>
+
+  <Step title="Implement lifecycle hooks">
+    ```go
+    func (p *TrackAnalyticsPlugin) OnNodeOpen(node disgolink.Node) {
+        log.Printf("Analytics: Node %s ready", node.Config().Name)
+    }
+
+    func (p *TrackAnalyticsPlugin) OnNodeClose(node disgolink.Node) {
+        log.Printf("Analytics: Node %s closed", node.Config().Name)
+    }
+
+    func (p *TrackAnalyticsPlugin) OnNodeMessageIn(node disgolink.Node, data []byte) {
+        // Optionally inspect messages
+    }
+
+    func (p *TrackAnalyticsPlugin) OnNewPlayer(player disgolink.Player) {
+        log.Printf("Analytics: Player created for %s", player.GuildID())
+    }
+
+    func (p *TrackAnalyticsPlugin) OnDestroyPlayer(player disgolink.Player) {
+        log.Printf("Analytics: Player destroyed for %s", player.GuildID())
+    }
+    ```
+  </Step>
+
+  <Step title="Register and use">
+    ```go
+    // Register the plugin
+    analytics := myplugin.NewTrackAnalyticsPlugin()
+    
+    lavalinkClient := disgolink.New(
+        applicationID,
+        disgolink.WithPlugins(analytics),
+    )
+    ```
+  </Step>
+</Steps>
+
+## Plugin Filters
+
+Some plugins add custom audio filters:
+
+```go
+// Example: Custom echo filter from a plugin
+filters := lavalink.Filters{
+    PluginFilters: map[string]any{
+        "echo": map[string]any{
+            "delay":     0.5,
+            "decay":     0.3,
+            "echoCount": 3,
+        },
+    },
+}
+
+err := player.Update(ctx, lavalink.WithFilters(filters))
+```
+
+Consult your plugin's documentation for available filters and parameters.
+
+## Best Practices
+
+<Tabs>
+  <Tab title="Error Handling">
+    ```go
+    func (p *MyPlugin) OnEventInvocation(player disgolink.Player, data []byte) {
+        var event MyEvent
+        if err := json.Unmarshal(data, &event); err != nil {
+            log.Printf("Failed to unmarshal event: %v", err)
+            return
+        }
+        
+        // Handle event
+    }
+    ```
+  </Tab>
+
+  <Tab title="Thread Safety">
+    ```go
+    type MyPlugin struct {
+        mu   sync.RWMutex
+        data map[string]any
+    }
+
+    func (p *MyPlugin) OnEventInvocation(player disgolink.Player, data []byte) {
+        p.mu.Lock()
+        defer p.mu.Unlock()
+        
+        // Safely modify shared data
+    }
+    ```
+  </Tab>
+
+  <Tab title="Logging">
+    ```go
+    type MyPlugin struct {
+        logger *slog.Logger
+    }
+
+    func NewMyPlugin(logger *slog.Logger) *MyPlugin {
+        return &MyPlugin{
+            logger: logger.With(slog.String("plugin", "my-plugin")),
+        }
+    }
+
+    func (p *MyPlugin) OnNodeOpen(node disgolink.Node) {
+        p.logger.Info("node connected", slog.String("node", node.Config().Name))
+    }
+    ```
+  </Tab>
+</Tabs>
+
+<Accordion title="FAQ">
+  <AccordionItem title="Do I need to install plugins on the Lavalink server?">
+    Yes, most plugins require both:
+    1. Server-side plugin installed in Lavalink
+    2. Client-side plugin registered in DisGoLink
+    
+    The server plugin adds functionality to Lavalink, while the client plugin handles the responses.
+  </AccordionItem>
+
+  <AccordionItem title="Can plugins communicate with each other?">
+    Plugins don't directly communicate, but they all have access to the same DisGoLink client and can share state through external mechanisms.
+  </AccordionItem>
+
+  <AccordionItem title="What happens if a plugin throws an error?">
+    Plugin errors should be handled within the plugin. DisGoLink catches panics from event listeners but plugins should implement proper error handling.
+  </AccordionItem>
+
+  <AccordionItem title="Can I unload a plugin at runtime?">
+    Yes, use `RemovePlugins()` to unregister plugins. However, ensure the plugin has properly cleaned up any resources.
+  </AccordionItem>
+
+  <AccordionItem title="How do I debug plugin events?">
+    Implement `OnNodeMessageIn()` to log all incoming WebSocket messages:
+    ```go
+    func (p *MyPlugin) OnNodeMessageIn(node disgolink.Node, data []byte) {
+        log.Printf("Message: %s", string(data))
+    }
+    ```
+  </AccordionItem>
+</Accordion>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Filters" icon="sliders" href="/guides/filters">
+    Learn about built-in and plugin audio filters
+  </Card>
+  <Card title="Error Handling" icon="triangle-exclamation" href="/guides/error-handling">
+    Handle plugin errors properly
+  </Card>
+</CardGroup>

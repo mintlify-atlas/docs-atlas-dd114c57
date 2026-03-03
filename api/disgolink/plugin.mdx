@@ -1,0 +1,392 @@
+---
+title: Plugin
+description: Plugin system for extending disgolink functionality
+---
+
+## Plugin Interface
+
+The plugin system allows you to extend disgolink with custom functionality, including handling custom operations and events from Lavalink plugins.
+
+### Base Plugin Interface
+
+All plugins must implement the base `Plugin` interface:
+
+```go
+type Plugin interface {
+    Name() string
+    Version() string
+}
+```
+
+<ParamField path="Name" type="string" required>
+  Returns the plugin name
+</ParamField>
+
+<ParamField path="Version" type="string" required>
+  Returns the plugin version
+</ParamField>
+
+## Plugin Types
+
+### OpPlugin
+
+Handles custom WebSocket operations from Lavalink plugins.
+
+```go
+type OpPlugin interface {
+    Op() lavalink.Op
+    OnOpInvocation(node Node, data []byte)
+}
+```
+
+<ParamField path="Op" type="lavalink.Op" required>
+  Returns the operation name this plugin handles
+</ParamField>
+
+<ParamField path="OnOpInvocation" type="func(node Node, data []byte)" required>
+  Called when the specified operation is received from Lavalink
+</ParamField>
+
+**Example:**
+
+```go
+type MyOpPlugin struct{}
+
+func (p *MyOpPlugin) Name() string    { return "my-op-plugin" }
+func (p *MyOpPlugin) Version() string { return "1.0.0" }
+func (p *MyOpPlugin) Op() lavalink.Op { return "customOp" }
+
+func (p *MyOpPlugin) OnOpInvocation(node disgolink.Node, data []byte) {
+    // Parse and handle the custom operation
+    var payload CustomPayload
+    if err := json.Unmarshal(data, &payload); err != nil {
+        log.Printf("Failed to unmarshal custom op: %v", err)
+        return
+    }
+    
+    // Handle the operation
+    log.Printf("Received custom op from node %s: %+v", node.Config().Name, payload)
+}
+```
+
+### EventPlugin
+
+Handles custom events from Lavalink plugins.
+
+```go
+type EventPlugin interface {
+    Event() lavalink.EventType
+    OnEventInvocation(player Player, data []byte)
+}
+```
+
+<ParamField path="Event" type="lavalink.EventType" required>
+  Returns the event type this plugin handles
+</ParamField>
+
+<ParamField path="OnEventInvocation" type="func(player Player, data []byte)" required>
+  Called when the specified event is received for a player
+</ParamField>
+
+**Example:**
+
+```go
+type LyricsPlugin struct{}
+
+func (p *LyricsPlugin) Name() string             { return "lyrics-plugin" }
+func (p *LyricsPlugin) Version() string          { return "1.0.0" }
+func (p *LyricsPlugin) Event() lavalink.EventType { return "LyricsEvent" }
+
+func (p *LyricsPlugin) OnEventInvocation(player disgolink.Player, data []byte) {
+    var lyrics LyricsEvent
+    if err := json.Unmarshal(data, &lyrics); err != nil {
+        log.Printf("Failed to unmarshal lyrics event: %v", err)
+        return
+    }
+    
+    fmt.Printf("Lyrics for guild %d:\n%s\n", player.GuildID(), lyrics.Text)
+}
+```
+
+### EventPlugins
+
+Allows a single plugin to handle multiple event types.
+
+```go
+type EventPlugins interface {
+    EventPlugins() []EventPlugin
+}
+```
+
+<ParamField path="EventPlugins" type="[]EventPlugin" required>
+  Returns an array of event plugins
+</ParamField>
+
+**Example:**
+
+```go
+type MultiEventPlugin struct{}
+
+func (p *MultiEventPlugin) Name() string    { return "multi-event-plugin" }
+func (p *MultiEventPlugin) Version() string { return "1.0.0" }
+
+func (p *MultiEventPlugin) EventPlugins() []disgolink.EventPlugin {
+    return []disgolink.EventPlugin{
+        &LyricsEventHandler{},
+        &SegmentsEventHandler{},
+    }
+}
+
+type LyricsEventHandler struct{}
+func (h *LyricsEventHandler) Event() lavalink.EventType { return "LyricsEvent" }
+func (h *LyricsEventHandler) OnEventInvocation(player disgolink.Player, data []byte) {
+    // Handle lyrics event
+}
+
+type SegmentsEventHandler struct{}
+func (h *SegmentsEventHandler) Event() lavalink.EventType { return "SegmentsLoaded" }
+func (h *SegmentsEventHandler) OnEventInvocation(player disgolink.Player, data []byte) {
+    // Handle segments event
+}
+```
+
+### PluginEventHandler
+
+Handles lifecycle events for nodes and players.
+
+```go
+type PluginEventHandler interface {
+    OnNodeOpen(node Node)
+    OnNodeClose(node Node)
+    OnNodeMessageIn(node Node, data []byte)
+    OnNewPlayer(player Player)
+    OnDestroyPlayer(player Player)
+}
+```
+
+<ParamField path="OnNodeOpen" type="func(node Node)" required>
+  Called when a node connection is established
+</ParamField>
+
+<ParamField path="OnNodeClose" type="func(node Node)" required>
+  Called when a node connection is closed
+</ParamField>
+
+<ParamField path="OnNodeMessageIn" type="func(node Node, data []byte)" required>
+  Called for every WebSocket message received from a node
+</ParamField>
+
+<ParamField path="OnNewPlayer" type="func(player Player)" required>
+  Called when a new player is created
+</ParamField>
+
+<ParamField path="OnDestroyPlayer" type="func(player Player)" required>
+  Called when a player is destroyed
+</ParamField>
+
+**Example:**
+
+```go
+type MonitorPlugin struct {
+    playerCount int
+}
+
+func (p *MonitorPlugin) Name() string    { return "monitor-plugin" }
+func (p *MonitorPlugin) Version() string { return "1.0.0" }
+
+func (p *MonitorPlugin) OnNodeOpen(node disgolink.Node) {
+    log.Printf("Node connected: %s", node.Config().Name)
+}
+
+func (p *MonitorPlugin) OnNodeClose(node disgolink.Node) {
+    log.Printf("Node disconnected: %s", node.Config().Name)
+}
+
+func (p *MonitorPlugin) OnNodeMessageIn(node disgolink.Node, data []byte) {
+    // Log all raw messages for debugging
+    log.Printf("[%s] << %s", node.Config().Name, string(data))
+}
+
+func (p *MonitorPlugin) OnNewPlayer(player disgolink.Player) {
+    p.playerCount++
+    log.Printf("Player created for guild %d (total: %d)", 
+        player.GuildID(), p.playerCount)
+}
+
+func (p *MonitorPlugin) OnDestroyPlayer(player disgolink.Player) {
+    p.playerCount--
+    log.Printf("Player destroyed for guild %d (remaining: %d)", 
+        player.GuildID(), p.playerCount)
+}
+```
+
+## Registering Plugins
+
+### At Client Creation
+
+Register plugins when creating the client:
+
+```go
+client := disgolink.New(userID,
+    disgolink.WithPlugins(
+        &MyOpPlugin{},
+        &LyricsPlugin{},
+        &MonitorPlugin{},
+    ),
+)
+```
+
+### At Runtime
+
+Add or remove plugins dynamically:
+
+```go
+// Add plugins
+plugin := &MonitorPlugin{}
+client.AddPlugins(plugin)
+
+// Remove plugins
+client.RemovePlugins(plugin)
+
+// Iterate over plugins
+client.ForPlugins(func(plugin disgolink.Plugin) {
+    fmt.Printf("%s v%s\n", plugin.Name(), plugin.Version())
+})
+```
+
+## Complete Plugin Example
+
+Here's a complete plugin that implements multiple interfaces:
+
+```go
+package main
+
+import (
+    "encoding/json"
+    "log"
+    "time"
+
+    "github.com/disgoorg/disgolink/v3"
+    "github.com/disgoorg/disgolink/v3/lavalink"
+)
+
+type LavaLinkPlugin struct {
+    metrics map[string]*Metrics
+}
+
+type Metrics struct {
+    MessageCount int
+    PlayerCount  int
+    LastSeen     time.Time
+}
+
+type SponsorBlockEvent struct {
+    Segments []Segment `json:"segments"`
+}
+
+type Segment struct {
+    Start    int64  `json:"start"`
+    End      int64  `json:"end"`
+    Category string `json:"category"`
+}
+
+// Implement base Plugin interface
+func (p *LavaLinkPlugin) Name() string    { return "sponsorblock-plugin" }
+func (p *LavaLinkPlugin) Version() string { return "1.0.0" }
+
+// Implement EventPlugin interface
+func (p *LavaLinkPlugin) Event() lavalink.EventType {
+    return "SegmentsLoaded"
+}
+
+func (p *LavaLinkPlugin) OnEventInvocation(player disgolink.Player, data []byte) {
+    var event SponsorBlockEvent
+    if err := json.Unmarshal(data, &event); err != nil {
+        log.Printf("Failed to unmarshal SponsorBlock event: %v", err)
+        return
+    }
+
+    log.Printf("[%d] Loaded %d sponsor segments", 
+        player.GuildID(), len(event.Segments))
+    
+    for _, segment := range event.Segments {
+        log.Printf("  %s: %d-%d", segment.Category, segment.Start, segment.End)
+    }
+}
+
+// Implement PluginEventHandler interface
+func (p *LavaLinkPlugin) OnNodeOpen(node disgolink.Node) {
+    name := node.Config().Name
+    p.metrics[name] = &Metrics{
+        LastSeen: time.Now(),
+    }
+    log.Printf("Node opened: %s", name)
+}
+
+func (p *LavaLinkPlugin) OnNodeClose(node disgolink.Node) {
+    name := node.Config().Name
+    if metrics, ok := p.metrics[name]; ok {
+        log.Printf("Node closed: %s (processed %d messages, %d players)",
+            name, metrics.MessageCount, metrics.PlayerCount)
+        delete(p.metrics, name)
+    }
+}
+
+func (p *LavaLinkPlugin) OnNodeMessageIn(node disgolink.Node, data []byte) {
+    name := node.Config().Name
+    if metrics, ok := p.metrics[name]; ok {
+        metrics.MessageCount++
+        metrics.LastSeen = time.Now()
+    }
+}
+
+func (p *LavaLinkPlugin) OnNewPlayer(player disgolink.Player) {
+    name := player.Node().Config().Name
+    if metrics, ok := p.metrics[name]; ok {
+        metrics.PlayerCount++
+    }
+    log.Printf("Player created: guild=%d, node=%s", player.GuildID(), name)
+}
+
+func (p *LavaLinkPlugin) OnDestroyPlayer(player disgolink.Player) {
+    name := player.Node().Config().Name
+    if metrics, ok := p.metrics[name]; ok {
+        metrics.PlayerCount--
+    }
+    log.Printf("Player destroyed: guild=%d, node=%s", player.GuildID(), name)
+}
+
+func main() {
+    plugin := &LavaLinkPlugin{
+        metrics: make(map[string]*Metrics),
+    }
+
+    client := disgolink.New(userID,
+        disgolink.WithPlugins(plugin),
+    )
+
+    // Use the client with the plugin...
+}
+```
+
+## Best Practices
+
+<Tip>
+  Plugins are called synchronously. Keep processing fast and offload heavy work to goroutines to avoid blocking event processing.
+</Tip>
+
+<Warning>
+  Be careful with `OnNodeMessageIn` - it's called for every WebSocket message and can be invoked frequently. Only use it when you need raw message access.
+</Warning>
+
+<Note>
+  Plugins receive raw JSON data in `OnOpInvocation` and `OnEventInvocation`. You're responsible for unmarshaling it to the appropriate types.
+</Note>
+
+## Use Cases
+
+- **Custom Lavalink Plugin Integration**: Handle events and operations from Lavalink plugins like SponsorBlock, LavaLyrics, or LavaSearch
+- **Metrics and Monitoring**: Track node health, player counts, and message throughput
+- **Debugging**: Log all WebSocket messages for troubleshooting
+- **Extended Functionality**: Add custom behavior to node and player lifecycle events
+- **Multi-Event Handling**: Use `EventPlugins` to handle multiple related events in a single plugin

@@ -1,0 +1,256 @@
+---
+title: Messages
+description: Lavalink WebSocket message types and operation codes
+---
+
+## Message Interface
+
+All Lavalink WebSocket messages implement the `Message` interface.
+
+```go
+type Message interface {
+    Op() Op
+}
+```
+
+## Op Type
+
+Operation codes that identify the type of message received from Lavalink.
+
+```go
+type Op string
+```
+
+### Constants
+
+<ParamField path="OpReady" type="Op" default="ready">
+  Sent when the connection to Lavalink is established
+</ParamField>
+
+<ParamField path="OpStats" type="Op" default="stats">
+  Periodic statistics about the Lavalink server
+</ParamField>
+
+<ParamField path="OpPlayerUpdate" type="Op" default="playerUpdate">
+  Player state update with position and time information
+</ParamField>
+
+<ParamField path="OpEvent" type="Op" default="event">
+  Player events (track start, end, exception, etc.)
+</ParamField>
+
+## ReadyMessage
+
+Received when the WebSocket connection is successfully established with Lavalink.
+
+<ResponseField name="Resumed" type="bool">
+  Whether this session was resumed from a previous connection
+</ResponseField>
+
+<ResponseField name="SessionID" type="string">
+  The session ID assigned by Lavalink for this connection
+</ResponseField>
+
+### Example
+
+```json
+{
+  "op": "ready",
+  "resumed": false,
+  "sessionId": "abc123xyz"
+}
+```
+
+## PlayerUpdateMessage
+
+Periodic updates about a player's state, sent automatically by Lavalink.
+
+<ResponseField name="GuildID" type="snowflake.ID">
+  The guild ID this player update is for
+</ResponseField>
+
+<ResponseField name="State" type="PlayerState">
+  The current state of the player
+  
+  <Expandable title="PlayerState fields">
+    <ResponseField name="Time" type="Timestamp">
+      Unix timestamp in milliseconds when this update was sent
+    </ResponseField>
+    
+    <ResponseField name="Position" type="Duration">
+      Current track position in milliseconds
+    </ResponseField>
+    
+    <ResponseField name="Connected" type="bool">
+      Whether the player is connected to the voice channel
+    </ResponseField>
+    
+    <ResponseField name="Ping" type="int">
+      Ping in milliseconds to the Discord voice server
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example
+
+```json
+{
+  "op": "playerUpdate",
+  "guildId": "123456789012345678",
+  "state": {
+    "time": 1234567890123,
+    "position": 60000,
+    "connected": true,
+    "ping": 50
+  }
+}
+```
+
+## StatsMessage
+
+Periodic statistics about the Lavalink server's resource usage and performance.
+
+<ResponseField name="Players" type="int">
+  Total number of players across all guilds
+</ResponseField>
+
+<ResponseField name="PlayingPlayers" type="int">
+  Number of players currently playing tracks
+</ResponseField>
+
+<ResponseField name="Uptime" type="Duration">
+  Server uptime in milliseconds
+</ResponseField>
+
+<ResponseField name="Memory" type="Memory">
+  Memory usage statistics
+  
+  <Expandable title="Memory fields">
+    <ResponseField name="Free" type="int">
+      Free memory in bytes
+    </ResponseField>
+    
+    <ResponseField name="Used" type="int">
+      Used memory in bytes
+    </ResponseField>
+    
+    <ResponseField name="Allocated" type="int">
+      Allocated memory in bytes
+    </ResponseField>
+    
+    <ResponseField name="Reservable" type="int">
+      Reservable memory in bytes
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="CPU" type="CPU">
+  CPU usage statistics
+  
+  <Expandable title="CPU fields">
+    <ResponseField name="Cores" type="int">
+      Number of CPU cores available
+    </ResponseField>
+    
+    <ResponseField name="SystemLoad" type="float64">
+      System-wide CPU load (0.0 to 1.0 per core)
+    </ResponseField>
+    
+    <ResponseField name="LavalinkLoad" type="float64">
+      Lavalink process CPU load (0.0 to 1.0 per core)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="FrameStats" type="*FrameStats">
+  Frame statistics (null if not playing anything)
+  
+  <Expandable title="FrameStats fields">
+    <ResponseField name="Sent" type="int">
+      Number of frames sent to Discord
+    </ResponseField>
+    
+    <ResponseField name="Nulled" type="int">
+      Number of frames that were null
+    </ResponseField>
+    
+    <ResponseField name="Deficit" type="int">
+      Number of deficit frames
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example
+
+```json
+{
+  "op": "stats",
+  "players": 5,
+  "playingPlayers": 3,
+  "uptime": 3600000,
+  "memory": {
+    "free": 1024000000,
+    "used": 512000000,
+    "allocated": 1536000000,
+    "reservable": 2048000000
+  },
+  "cpu": {
+    "cores": 4,
+    "systemLoad": 0.25,
+    "lavalinkLoad": 0.05
+  },
+  "frameStats": {
+    "sent": 6000,
+    "nulled": 0,
+    "deficit": 0
+  }
+}
+```
+
+## UnknownMessage
+
+Handles unknown or plugin-specific message types that aren't part of the standard Lavalink protocol.
+
+<ResponseField name="Op_" type="Op">
+  The operation code of the unknown message
+</ResponseField>
+
+<ResponseField name="Data" type="json.RawMessage">
+  Raw JSON data of the entire message for custom parsing
+</ResponseField>
+
+### Usage
+
+This allows you to handle custom messages from Lavalink plugins or future protocol extensions:
+
+```go
+if unknownMsg, ok := msg.(UnknownMessage); ok {
+    // Handle custom message type
+    var customData MyCustomType
+    if err := json.Unmarshal(unknownMsg.Data, &customData); err != nil {
+        // Handle error
+    }
+}
+```
+
+## Unmarshaling Messages
+
+Use the `UnmarshalMessage` function to parse incoming WebSocket messages:
+
+```go
+message, err := lavalink.UnmarshalMessage(data)
+if err != nil {
+    // Handle error
+}
+
+switch msg := message.(type) {
+case lavalink.ReadyMessage:
+    // Handle ready
+case lavalink.PlayerUpdateMessage:
+    // Handle player update
+case lavalink.StatsMessage:
+    // Handle stats
+case lavalink.Event:
+    // Handle events (see Events page)
+}
+```

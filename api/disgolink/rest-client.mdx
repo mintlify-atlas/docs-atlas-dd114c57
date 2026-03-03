@@ -1,0 +1,397 @@
+---
+title: RestClient
+description: Interface for making HTTP requests to Lavalink REST API endpoints
+---
+
+## RestClient Interface
+
+The `RestClient` interface provides methods for interacting with Lavalink's REST API endpoints.
+
+<Note>
+  You typically access the REST client through a `Node` instance via `node.Rest()` rather than creating it directly.
+</Note>
+
+## HTTP Client
+
+### Do
+
+Executes a custom HTTP request with automatic authorization and host configuration.
+
+<ParamField path="rq" type="*http.Request" required>
+  The HTTP request to execute
+</ParamField>
+
+<ResponseField name="*http.Response" type="*http.Response">
+  The HTTP response
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Error if the request fails
+</ResponseField>
+
+```go
+Do(rq *http.Request) (*http.Response, error)
+```
+
+<Note>
+  This method automatically sets the Authorization header and replaces the host/scheme with the node's configuration.
+</Note>
+
+## Server Information
+
+### Version
+
+Retrieves the Lavalink server version.
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for the request
+</ParamField>
+
+<ResponseField name="string" type="string">
+  The version string
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Error if the request fails
+</ResponseField>
+
+```go
+Version(ctx context.Context) (string, error)
+```
+
+**Example:**
+```go
+version, err := node.Rest().Version(ctx)
+fmt.Printf("Lavalink version: %s\n", version)
+```
+
+### Info
+
+Retrieves detailed server information.
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for the request
+</ParamField>
+
+<ResponseField name="*lavalink.Info" type="*lavalink.Info">
+  Server info including version, build time, Git info, JVM info, plugins, and source managers
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Error if the request fails
+</ResponseField>
+
+```go
+Info(ctx context.Context) (*lavalink.Info, error)
+```
+
+**Example:**
+```go
+info, err := node.Rest().Info(ctx)
+if err == nil {
+    fmt.Printf("Version: %s\n", info.Version.Semver)
+    fmt.Printf("Plugins: %v\n", info.Plugins)
+}
+```
+
+### Stats
+
+Retrieves current server statistics.
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for the request
+</ParamField>
+
+<ResponseField name="*lavalink.Stats" type="*lavalink.Stats">
+  Statistics including player counts, CPU usage, memory usage, uptime, and frame stats
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Error if the request fails
+</ResponseField>
+
+```go
+Stats(ctx context.Context) (*lavalink.Stats, error)
+```
+
+## Session Management
+
+### UpdateSession
+
+Updates session configuration.
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for the request
+</ParamField>
+
+<ParamField path="sessionID" type="string" required>
+  The session ID to update
+</ParamField>
+
+<ParamField path="sessionUpdate" type="lavalink.SessionUpdate" required>
+  Session update parameters
+</ParamField>
+
+<ResponseField name="*lavalink.Session" type="*lavalink.Session">
+  The updated session information
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Error if the request fails
+</ResponseField>
+
+```go
+UpdateSession(ctx context.Context, sessionID string, sessionUpdate lavalink.SessionUpdate) (*lavalink.Session, error)
+```
+
+**Example:**
+```go
+session, err := node.Rest().UpdateSession(ctx, sessionID, lavalink.SessionUpdate{
+    Resuming: true,
+    Timeout:  60,
+})
+```
+
+## Player Operations
+
+### Players
+
+Retrieves all players for a session.
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for the request
+</ParamField>
+
+<ParamField path="sessionID" type="string" required>
+  The session ID
+</ParamField>
+
+<ResponseField name="[]lavalink.Player" type="[]lavalink.Player">
+  Array of all players in the session
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Error if the request fails
+</ResponseField>
+
+```go
+Players(ctx context.Context, sessionID string) ([]lavalink.Player, error)
+```
+
+### Player
+
+Retrieves a specific player.
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for the request
+</ParamField>
+
+<ParamField path="sessionID" type="string" required>
+  The session ID
+</ParamField>
+
+<ParamField path="guildID" type="snowflake.ID" required>
+  The guild ID
+</ParamField>
+
+<ResponseField name="*lavalink.Player" type="*lavalink.Player">
+  The player information
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Error if the request fails
+</ResponseField>
+
+```go
+Player(ctx context.Context, sessionID string, guildID snowflake.ID) (*lavalink.Player, error)
+```
+
+### UpdatePlayer
+
+Updates a player's state.
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for the request
+</ParamField>
+
+<ParamField path="sessionID" type="string" required>
+  The session ID
+</ParamField>
+
+<ParamField path="guildID" type="snowflake.ID" required>
+  The guild ID
+</ParamField>
+
+<ParamField path="playerUpdate" type="lavalink.PlayerUpdate" required>
+  The player update parameters
+</ParamField>
+
+<ResponseField name="*lavalink.Player" type="*lavalink.Player">
+  The updated player state
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Error if the request fails
+</ResponseField>
+
+```go
+UpdatePlayer(ctx context.Context, sessionID string, guildID snowflake.ID, playerUpdate lavalink.PlayerUpdate) (*lavalink.Player, error)
+```
+
+**Example:**
+```go
+player, err := node.Rest().UpdatePlayer(ctx, sessionID, guildID, lavalink.PlayerUpdate{
+    Track: &lavalink.TrackUpdate{
+        Encoded: encodedTrack,
+    },
+    Volume: lavalink.Ptr(80),
+    Paused: lavalink.Ptr(false),
+})
+```
+
+### DestroyPlayer
+
+Destroys a player.
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for the request
+</ParamField>
+
+<ParamField path="sessionID" type="string" required>
+  The session ID
+</ParamField>
+
+<ParamField path="guildID" type="snowflake.ID" required>
+  The guild ID
+</ParamField>
+
+<ResponseField name="error" type="error">
+  Error if the request fails
+</ResponseField>
+
+```go
+DestroyPlayer(ctx context.Context, sessionID string, guildID snowflake.ID) error
+```
+
+## Track Loading and Decoding
+
+### LoadTracks
+
+Loads tracks from an identifier.
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for the request
+</ParamField>
+
+<ParamField path="identifier" type="string" required>
+  URL or search query (e.g., "ytsearch:song name")
+</ParamField>
+
+<ResponseField name="*lavalink.LoadResult" type="*lavalink.LoadResult">
+  Load result with tracks, playlist, or error
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Error if the request fails
+</ResponseField>
+
+```go
+LoadTracks(ctx context.Context, identifier string) (*lavalink.LoadResult, error)
+```
+
+**Example:**
+```go
+result, err := node.Rest().LoadTracks(ctx, "ytsearch:never gonna give you up")
+if err == nil {
+    switch data := result.Data.(type) {
+    case lavalink.Track:
+        fmt.Printf("Loaded track: %s\n", data.Info.Title)
+    case lavalink.Playlist:
+        fmt.Printf("Loaded playlist: %s\n", data.Info.Name)
+    case lavalink.Search:
+        fmt.Printf("Search results: %d tracks\n", len(data))
+    }
+}
+```
+
+### DecodeTrack
+
+Decodes a single base64-encoded track.
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for the request
+</ParamField>
+
+<ParamField path="encodedTrack" type="string" required>
+  Base64-encoded track string
+</ParamField>
+
+<ResponseField name="*lavalink.Track" type="*lavalink.Track">
+  The decoded track
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Error if the request fails
+</ResponseField>
+
+```go
+DecodeTrack(ctx context.Context, encodedTrack string) (*lavalink.Track, error)
+```
+
+### DecodeTracks
+
+Decodes multiple base64-encoded tracks.
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for the request
+</ParamField>
+
+<ParamField path="encodedTracks" type="[]string" required>
+  Array of base64-encoded track strings
+</ParamField>
+
+<ResponseField name="[]lavalink.Track" type="[]lavalink.Track">
+  Array of decoded tracks
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Error if the request fails
+</ResponseField>
+
+```go
+DecodeTracks(ctx context.Context, encodedTracks []string) ([]lavalink.Track, error)
+```
+
+## REST Endpoints
+
+The following endpoint constants are available:
+
+```go
+EndpointBase          = "/v4"
+EndpointVersion       = "/version"
+EndpointInfo          = "/v4/info"
+EndpointStats         = "/v4/stats"
+EndpointUpdateSession = "/v4/sessions/%s"
+EndpointPlayers       = "/v4/sessions/%s/players"
+EndpointPlayer        = "/v4/sessions/%s/players/%s"
+EndpointUpdatePlayer  = "/v4/sessions/%s/players/%s?noReplace=%t"
+EndpointDestroyPlayer = "/v4/sessions/%s/players/%s"
+EndpointLoadTracks    = "/v4/loadtracks?identifier=%s"
+EndpointDecodeTrack   = "/v4/decodetrack?track=%s"
+EndpointDecodeTracks  = "/v4/decodetracks"
+EndpointWebSocket     = "/v4/websocket"
+```
+
+## Error Handling
+
+All methods return `lavalink.Error` when the server responds with an error status:
+
+```go
+result, err := node.Rest().LoadTracks(ctx, "invalid://url")
+if err != nil {
+    if lavalinkErr, ok := err.(lavalink.Error); ok {
+        fmt.Printf("Lavalink error: %s (severity: %s)\n", 
+            lavalinkErr.Message, lavalinkErr.Severity)
+    }
+}
+```

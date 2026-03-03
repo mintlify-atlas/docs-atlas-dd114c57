@@ -1,0 +1,499 @@
+---
+title: 'Error Handling'
+description: 'Learn how to handle errors in DisGoLink'
+icon: 'triangle-exclamation'
+---
+
+Proper error handling is crucial for building robust Discord music bots. This guide covers common errors and how to handle them.
+
+## Error Types
+
+DisGoLink and Lavalink provide several error types:
+
+### lavalink.Error
+
+HTTP errors from Lavalink REST API:
+
+```go
+import "github.com/disgoorg/disgolink/v3/lavalink"
+
+node, err := lavalinkClient.AddNode(ctx, nodeConfig)
+if err != nil {
+    // Check if it's a Lavalink error
+    var lavalinkErr lavalink.Error
+    if errors.As(err, &lavalinkErr) {
+        log.Printf("Lavalink error: %s", lavalinkErr.Message)
+        log.Printf("Status code: %d", lavalinkErr.Status)
+        log.Printf("Path: %s", lavalinkErr.Path)
+    }
+}
+```
+
+**lavalink.Error Fields:**
+- `Status`: HTTP status code
+- `StatusError`: HTTP status text
+- `Message`: Error message
+- `Path`: API endpoint that failed
+- `Timestamp`: When the error occurred
+- `Trace`: Stack trace (if available)
+
+### lavalink.Exception
+
+Track loading exceptions:
+
+```go
+result, err := node.LoadTracks(ctx, identifier)
+if err != nil {
+    log.Printf("Request failed: %v", err)
+    return
+}
+
+if result.LoadType == lavalink.LoadTypeError {
+    exception := result.Data.(lavalink.Exception)
+    
+    log.Printf("Load failed: %s", exception.Message)
+    log.Printf("Severity: %s", exception.Severity)
+    log.Printf("Cause: %s", exception.Cause)
+}
+```
+
+**Exception Severity:**
+- `SeverityCommon`: Normal errors (e.g., track not found)
+- `SeveritySuspicious`: Unusual errors
+- `SeverityFault`: Serious Lavalink issues
+
+### DisGoLink Errors
+
+Client-specific errors:
+
+```go
+import "github.com/disgoorg/disgolink/v3/disgolink"
+
+err := player.Update(ctx, lavalink.WithTrack(track))
+if err != nil {
+    if errors.Is(err, disgolink.ErrPlayerNoNode) {
+        log.Println("Player has no available node")
+        // Assign player to a node
+    }
+}
+
+node, err := lavalinkClient.AddNode(ctx, config)
+if err != nil {
+    if errors.Is(err, disgolink.ErrNodeAlreadyConnected) {
+        log.Println("Node is already connected")
+    }
+}
+```
+
+**Common DisGoLink Errors:**
+- `ErrPlayerNoNode`: Player has no associated node
+- `ErrNodeAlreadyConnected`: Node connection already exists
+
+## Connection Errors
+
+### Failed to Connect
+
+<Steps>
+  <Step title="Check if connection failed">
+    ```go
+    node, err := lavalinkClient.AddNode(ctx, nodeConfig)
+    if err != nil {
+        log.Printf("Failed to connect to Lavalink: %v", err)
+        
+        // Check specific errors
+        if errors.Is(err, context.DeadlineExceeded) {
+            log.Println("Connection timeout")
+        } else if errors.Is(err, context.Canceled) {
+            log.Println("Connection canceled")
+        }
+        
+        return err
+    }
+    ```
+  </Step>
+
+  <Step title="Monitor node status">
+    ```go
+    // Check if node is connected
+    if node.Status() != disgolink.StatusConnected {
+        log.Printf("Node not ready: %s", node.Status())
+    }
+    ```
+  </Step>
+
+  <Step title="Verify credentials">
+    ```go
+    // Get node version to test connection
+    version, err := node.Version(ctx)
+    if err != nil {
+        log.Printf("Failed to get version (auth failed?): %v", err)
+    } else {
+        log.Printf("Connected to Lavalink v%s", version)
+    }
+    ```
+  </Step>
+</Steps>
+
+**Common Connection Issues:**
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| Connection refused | Lavalink not running | Start Lavalink server |
+| Timeout | Wrong address | Check address and port |
+| 401 Unauthorized | Wrong password | Verify password in config |
+| SSL error | Secure mismatch | Set `Secure: true/false` correctly |
+
+## Track Loading Errors
+
+### Using LoadTracks()
+
+```go
+func loadTrackSafely(node disgolink.Node, identifier string) (*lavalink.Track, error) {
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+
+    result, err := node.LoadTracks(ctx, identifier)
+    if err != nil {
+        // Network or API error
+        return nil, fmt.Errorf("failed to load tracks: %w", err)
+    }
+
+    switch result.LoadType {
+    case lavalink.LoadTypeTrack:
+        track := result.Data.(lavalink.Track)
+        return &track, nil
+
+    case lavalink.LoadTypePlaylist:
+        playlist := result.Data.(lavalink.Playlist)
+        if len(playlist.Tracks) == 0 {
+            return nil, fmt.Errorf("playlist is empty")
+        }
+        return &playlist.Tracks[0], nil
+
+    case lavalink.LoadTypeSearch:
+        tracks := result.Data.(lavalink.Search)
+        if len(tracks) == 0 {
+            return nil, fmt.Errorf("no search results")
+        }
+        return &tracks[0], nil
+
+    case lavalink.LoadTypeEmpty:
+        return nil, fmt.Errorf("no matches found")
+
+    case lavalink.LoadTypeError:
+        exception := result.Data.(lavalink.Exception)
+        return nil, fmt.Errorf("load failed: %s (severity: %s)", 
+            exception.Message, exception.Severity)
+
+    default:
+        return nil, fmt.Errorf("unknown load type: %s", result.LoadType)
+    }
+}
+```
+
+### Using LoadTracksHandler()
+
+```go
+var loadErr error
+var track *lavalink.Track
+
+node.LoadTracksHandler(ctx, identifier, disgolink.NewResultHandler(
+    func(t lavalink.Track) {
+        track = &t
+    },
+    func(playlist lavalink.Playlist) {
+        if len(playlist.Tracks) > 0 {
+            track = &playlist.Tracks[0]
+        } else {
+            loadErr = fmt.Errorf("playlist is empty")
+        }
+    },
+    func(tracks []lavalink.Track) {
+        if len(tracks) > 0 {
+            track = &tracks[0]
+        } else {
+            loadErr = fmt.Errorf("no search results")
+        }
+    },
+    func() {
+        loadErr = fmt.Errorf("no matches found")
+    },
+    func(err error) {
+        loadErr = fmt.Errorf("load failed: %w", err)
+    },
+))
+
+if loadErr != nil {
+    return nil, loadErr
+}
+
+if track == nil {
+    return nil, fmt.Errorf("no track loaded")
+}
+```
+
+## Playback Errors
+
+### Player Update Errors
+
+```go
+err := player.Update(ctx, lavalink.WithTrack(track))
+if err != nil {
+    // Check for specific errors
+    if errors.Is(err, disgolink.ErrPlayerNoNode) {
+        log.Println("Player has no node, reassigning...")
+        
+        // Get best node and retry
+        node := lavalinkClient.BestNode()
+        if node == nil {
+            return fmt.Errorf("no available nodes")
+        }
+        
+        // Create new player on this node
+        player = lavalinkClient.PlayerOnNode(node, guildID)
+        
+        // Retry update
+        err = player.Update(ctx, lavalink.WithTrack(track))
+    }
+    
+    if err != nil {
+        var lavalinkErr lavalink.Error
+        if errors.As(err, &lavalinkErr) {
+            log.Printf("Lavalink error: %s", lavalinkErr.Message)
+        }
+        return err
+    }
+}
+```
+
+### Track Events
+
+Handle track exceptions during playback:
+
+```go
+func onTrackException(player disgolink.Player, event lavalink.TrackExceptionEvent) {
+    log.Printf("Track exception in guild %s", player.GuildID())
+    log.Printf("Track: %s", event.Track.Info.Title)
+    log.Printf("Error: %s", event.Exception.Message)
+    log.Printf("Severity: %s", event.Exception.Severity)
+    
+    // Notify user
+    // Skip to next track
+    // Or retry playback
+}
+
+func onTrackStuck(player disgolink.Player, event lavalink.TrackStuckEvent) {
+    log.Printf("Track stuck in guild %s", player.GuildID())
+    log.Printf("Threshold: %dms", event.ThresholdMs)
+    
+    // Skip stuck track
+    _ = player.Update(context.TODO(), lavalink.WithNullTrack())
+}
+```
+
+## Voice Connection Errors
+
+### WebSocket Closed Event
+
+```go
+func onWebSocketClosed(player disgolink.Player, event lavalink.WebSocketClosedEvent) {
+    log.Printf("Voice WebSocket closed in guild %s", player.GuildID())
+    log.Printf("Code: %d", event.Code)
+    log.Printf("Reason: %s", event.Reason)
+    log.Printf("By Remote: %t", event.ByRemote)
+    
+    // Handle common close codes
+    switch event.Code {
+    case 4014:
+        log.Println("Voice channel deleted or bot removed")
+        // Destroy player
+        _ = player.Destroy(context.TODO())
+        
+    case 4015:
+        log.Println("Voice server crashed")
+        // Reconnect if needed
+        
+    case 1000:
+        log.Println("Normal closure")
+        
+    default:
+        log.Printf("Unexpected close code: %d", event.Code)
+    }
+}
+```
+
+**Common Voice Close Codes:**
+
+| Code | Meaning | Action |
+|------|---------|--------|
+| 1000 | Normal closure | None |
+| 4014 | Channel deleted | Destroy player |
+| 4015 | Server crashed | Reconnect |
+| 4006 | Invalid session | Reconnect with new session |
+
+## Timeout Handling
+
+Always use timeouts for potentially slow operations:
+
+<Tabs>
+  <Tab title="Context Timeout">
+    ```go
+    // Set timeout for operations
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+
+    result, err := node.LoadTracks(ctx, identifier)
+    if err != nil {
+        if errors.Is(err, context.DeadlineExceeded) {
+            return fmt.Errorf("operation timed out")
+        }
+        return err
+    }
+    ```
+  </Tab>
+
+  <Tab title="Retry Logic">
+    ```go
+    func loadWithRetry(node disgolink.Node, identifier string, maxRetries int) (*lavalink.Track, error) {
+        for i := 0; i < maxRetries; i++ {
+            ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+            defer cancel()
+            
+            track, err := loadTrackSafely(node, identifier)
+            if err == nil {
+                return track, nil
+            }
+            
+            log.Printf("Retry %d/%d: %v", i+1, maxRetries, err)
+            time.Sleep(time.Second * time.Duration(i+1))
+        }
+        
+        return nil, fmt.Errorf("failed after %d retries", maxRetries)
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Error Recovery Strategies
+
+### Node Failure
+
+```go
+func getHealthyNode(lavalink disgolink.Client) disgolink.Node {
+    var healthyNode disgolink.Node
+    
+    lavalink.ForNodes(func(node disgolink.Node) {
+        if node.Status() == disgolink.StatusConnected {
+            if healthyNode == nil || node.Stats().Better(healthyNode.Stats()) {
+                healthyNode = node
+            }
+        }
+    })
+    
+    return healthyNode
+}
+
+// Migrate player to healthy node
+func migratePlayer(lavalink disgolink.Client, guildID snowflake.ID) error {
+    oldPlayer := lavalink.ExistingPlayer(guildID)
+    if oldPlayer == nil {
+        return fmt.Errorf("no existing player")
+    }
+    
+    node := getHealthyNode(lavalink)
+    if node == nil {
+        return fmt.Errorf("no healthy nodes available")
+    }
+    
+    // Save state
+    track := oldPlayer.Track()
+    position := oldPlayer.Position()
+    volume := oldPlayer.Volume()
+    paused := oldPlayer.Paused()
+    
+    // Destroy old player
+    _ = oldPlayer.Destroy(context.TODO())
+    
+    // Create new player
+    newPlayer := lavalink.PlayerOnNode(node, guildID)
+    
+    // Restore state
+    if track != nil {
+        _ = newPlayer.Update(context.TODO(),
+            lavalink.WithTrack(*track),
+            lavalink.WithPosition(position),
+            lavalink.WithVolume(volume),
+            lavalink.WithPaused(paused),
+        )
+    }
+    
+    return nil
+}
+```
+
+### Graceful Degradation
+
+```go
+func playTrackWithFallback(player disgolink.Player, queries []string) error {
+    node := player.Node()
+    ctx := context.Background()
+    
+    // Try each query in order
+    for _, query := range queries {
+        track, err := loadTrackSafely(node, query)
+        if err != nil {
+            log.Printf("Failed to load %s: %v", query, err)
+            continue
+        }
+        
+        err = player.Update(ctx, lavalink.WithTrack(*track))
+        if err == nil {
+            return nil
+        }
+        
+        log.Printf("Failed to play %s: %v", query, err)
+    }
+    
+    return fmt.Errorf("all fallbacks failed")
+}
+
+// Usage
+err := playTrackWithFallback(player, []string{
+    "https://youtube.com/watch?v=...",
+    "ytsearch:song name",
+    "scsearch:song name",
+})
+```
+
+<Accordion title="FAQ">
+  <AccordionItem title="Should I log all errors?">
+    Log errors that indicate problems, but don't spam logs with expected errors (e.g., no search results). Use appropriate log levels:
+    - `ERROR`: Unexpected failures
+    - `WARN`: Recoverable issues
+    - `INFO`: Normal operations
+    - `DEBUG`: Detailed diagnostics
+  </AccordionItem>
+
+  <AccordionItem title="How do I handle network errors?">
+    Network errors typically manifest as context deadline exceeded or connection errors. Implement retry logic with exponential backoff for transient failures.
+  </AccordionItem>
+
+  <AccordionItem title="What if all nodes are down?">
+    Queue operations and notify users that the music service is temporarily unavailable. Consider implementing a circuit breaker pattern to avoid cascading failures.
+  </AccordionItem>
+
+  <AccordionItem title="Should I destroy players on error?">
+    Not always. Only destroy players for unrecoverable errors like voice channel deletion. For transient errors, keep the player and retry.
+  </AccordionItem>
+</Accordion>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Setup Lavalink" icon="server" href="/guides/setup-lavalink">
+    Learn about proper Lavalink configuration
+  </Card>
+  <Card title="Playing Audio" icon="play" href="/guides/playing-audio">
+    Master the complete playback flow
+  </Card>
+</CardGroup>

@@ -1,0 +1,503 @@
+---
+title: Events
+description: Handling Lavalink events and player lifecycle
+---
+
+DisGoLink provides a comprehensive event system for monitoring player state, track lifecycle, and connection status.
+
+## Event Listener Interface
+
+Implement the `EventListener` interface to handle events:
+
+```go
+type EventListener interface {
+    OnEvent(player Player, event lavalink.Message)
+}
+```
+
+<ParamField path="OnEvent" type="func(Player, lavalink.Message)">
+  Called for every event from Lavalink
+  
+  **Parameters:**
+  - `player`: The player that triggered the event (nil for Stats events)
+  - `event`: The event message (can be type-asserted to specific event types)
+</ParamField>
+
+## Registering Listeners
+
+### At Client Creation
+
+```go
+client := disgolink.New(userID,
+    disgolink.WithListeners(myListener),
+)
+```
+
+### After Creation
+
+```go
+client.AddListeners(listener1, listener2)
+```
+
+### Typed Listener Function
+
+Register a function that only handles specific event types:
+
+```go
+client.AddListeners(disgolink.NewListenerFunc(func(p disgolink.Player, e lavalink.TrackStartEvent) {
+    fmt.Printf("Track started: %s\n", e.Track.Info.Title)
+}))
+
+// Or at creation
+client := disgolink.New(userID,
+    disgolink.WithListenerFunc(func(p disgolink.Player, e lavalink.TrackEndEvent) {
+        fmt.Printf("Track ended: %s (reason: %s)\n", e.Track.Info.Title, e.Reason)
+    }),
+)
+```
+
+<Info>
+Typed listener functions automatically filter events by type, so you don't need manual type assertions.
+</Info>
+
+### Removing Listeners
+
+```go
+client.RemoveListeners(listener1, listener2)
+```
+
+## Event Types
+
+### TrackStartEvent
+
+Fired when a track starts playing:
+
+```go
+type TrackStartEvent struct {
+    Track    Track        `json:"track"`
+    GuildID_ snowflake.ID `json:"guildId"`
+}
+```
+
+<ParamField path="Track" type="Track">
+  The track that started playing
+</ParamField>
+
+<ParamField path="GuildID_" type="snowflake.ID">
+  The guild ID where playback started
+</ParamField>
+
+**Example Handler:**
+
+```go
+func (l *MyListener) OnEvent(p disgolink.Player, e lavalink.Message) {
+    if event, ok := e.(lavalink.TrackStartEvent); ok {
+        fmt.Printf("▶️  Now playing: %s by %s\n", 
+            event.Track.Info.Title, 
+            event.Track.Info.Author)
+    }
+}
+```
+
+### TrackEndEvent
+
+Fired when a track stops playing:
+
+```go
+type TrackEndEvent struct {
+    Track    Track          `json:"track"`
+    Reason   TrackEndReason `json:"reason"`
+    GuildID_ snowflake.ID   `json:"guildId"`
+}
+```
+
+<ParamField path="Track" type="Track">
+  The track that ended
+</ParamField>
+
+<ParamField path="Reason" type="TrackEndReason">
+  Why the track ended
+</ParamField>
+
+<ParamField path="GuildID_" type="snowflake.ID">
+  The guild ID where playback ended
+</ParamField>
+
+#### Track End Reasons
+
+<ParamField path="TrackEndReasonFinished" type="TrackEndReason">
+  Track finished playing normally (use to play next track)
+</ParamField>
+
+<ParamField path="TrackEndReasonLoadFailed" type="TrackEndReason">
+  Track failed to load (use to play next track)
+</ParamField>
+
+<ParamField path="TrackEndReasonStopped" type="TrackEndReason">
+  Track was stopped manually
+</ParamField>
+
+<ParamField path="TrackEndReasonReplaced" type="TrackEndReason">
+  Track was replaced by another track
+</ParamField>
+
+<ParamField path="TrackEndReasonCleanup" type="TrackEndReason">
+  Track stopped due to cleanup
+</ParamField>
+
+**Example Handler:**
+
+```go
+if event, ok := e.(lavalink.TrackEndEvent); ok {
+    fmt.Printf("⏹️  Track ended: %s (reason: %s)\n", 
+        event.Track.Info.Title, 
+        event.Reason)
+    
+    // Play next track if this one finished
+    if event.Reason.MayStartNext() {
+        // Load and play next track
+        playNextTrack(p)
+    }
+}
+```
+
+<Info>
+Use `reason.MayStartNext()` to determine if you should start the next track. Returns true for `finished` and `loadFailed`.
+</Info>
+
+### TrackExceptionEvent
+
+Fired when a track encounters an error during playback:
+
+```go
+type TrackExceptionEvent struct {
+    Track     Track        `json:"track"`
+    Exception Exception    `json:"exception"`
+    GuildID_  snowflake.ID `json:"guildId"`
+}
+```
+
+<ParamField path="Track" type="Track">
+  The track that encountered an error
+</ParamField>
+
+<ParamField path="Exception" type="Exception">
+  Error details (message, severity, cause, stack trace)
+</ParamField>
+
+<ParamField path="GuildID_" type="snowflake.ID">
+  The guild ID where the exception occurred
+</ParamField>
+
+**Example Handler:**
+
+```go
+if event, ok := e.(lavalink.TrackExceptionEvent); ok {
+    fmt.Printf("❌ Track error: %s - %s (severity: %s)\n",
+        event.Track.Info.Title,
+        event.Exception.Message,
+        event.Exception.Severity)
+}
+```
+
+### TrackStuckEvent
+
+Fired when a track gets stuck (no audio packets for a period):
+
+```go
+type TrackStuckEvent struct {
+    Track     Track        `json:"track"`
+    Threshold Duration     `json:"thresholdMs"`
+    GuildID_  snowflake.ID `json:"guildId"`
+}
+```
+
+<ParamField path="Track" type="Track">
+  The track that got stuck
+</ParamField>
+
+<ParamField path="Threshold" type="Duration">
+  How long the track was stuck in milliseconds
+</ParamField>
+
+<ParamField path="GuildID_" type="snowflake.ID">
+  The guild ID where the track got stuck
+</ParamField>
+
+**Example Handler:**
+
+```go
+if event, ok := e.(lavalink.TrackStuckEvent); ok {
+    fmt.Printf("⚠️  Track stuck: %s (threshold: %dms)\n",
+        event.Track.Info.Title,
+        event.Threshold)
+    // Skip to next track
+    playNextTrack(p)
+}
+```
+
+### WebSocketClosedEvent
+
+Fired when the Discord voice WebSocket connection closes:
+
+```go
+type WebSocketClosedEvent struct {
+    Code     int          `json:"code"`
+    Reason   string       `json:"reason"`
+    ByRemote bool         `json:"byRemote"`
+    GuildID_ snowflake.ID `json:"guildId"`
+}
+```
+
+<ParamField path="Code" type="int">
+  WebSocket close code (e.g., 4014 for kicked from voice channel)
+</ParamField>
+
+<ParamField path="Reason" type="string">
+  Human-readable close reason
+</ParamField>
+
+<ParamField path="ByRemote" type="bool">
+  Whether the connection was closed by Discord (true) or locally (false)
+</ParamField>
+
+<ParamField path="GuildID_" type="snowflake.ID">
+  The guild ID where the connection closed
+</ParamField>
+
+**Example Handler:**
+
+```go
+if event, ok := e.(lavalink.WebSocketClosedEvent); ok {
+    fmt.Printf("🔌 Voice connection closed: %s (code: %d, remote: %v)\n",
+        event.Reason,
+        event.Code,
+        event.ByRemote)
+}
+```
+
+<Note>
+Common close codes:
+- `4014`: Disconnected (kicked from channel)
+- `4015`: Voice server crashed
+- `4006`: Session no longer valid
+</Note>
+
+### PlayerUpdateMessage
+
+Fired periodically with player state updates:
+
+```go
+type PlayerUpdateMessage struct {
+    State   PlayerState  `json:"state"`
+    GuildID snowflake.ID `json:"guildId"`
+}
+```
+
+<ParamField path="State" type="PlayerState">
+  Current player state (time, position, connected status, ping)
+</ParamField>
+
+<ParamField path="GuildID" type="snowflake.ID">
+  The guild ID for this player
+</ParamField>
+
+**Example Handler:**
+
+```go
+if event, ok := e.(lavalink.PlayerUpdateMessage); ok {
+    fmt.Printf("📊 Player update: position=%dms, ping=%dms, connected=%v\n",
+        event.State.Position,
+        event.State.Ping,
+        event.State.Connected)
+}
+```
+
+<Info>
+Player updates are sent approximately every 5 seconds while a track is playing.
+</Info>
+
+### PlayerPauseEvent
+
+Fired when a player is paused:
+
+```go
+type PlayerPauseEvent struct {
+    GuildID_ snowflake.ID `json:"guildId"`
+}
+```
+
+<Warning>
+This event is **not sent by Lavalink**. It's dispatched artificially by DisGoLink when calling `player.Update(ctx, lavalink.WithPaused(true))`.
+</Warning>
+
+**Example Handler:**
+
+```go
+if event, ok := e.(lavalink.PlayerPauseEvent); ok {
+    fmt.Printf("⏸️  Player paused in guild %d\n", event.GuildID_)
+}
+```
+
+### PlayerResumeEvent
+
+Fired when a player is resumed:
+
+```go
+type PlayerResumeEvent struct {
+    GuildID_ snowflake.ID `json:"guildId"`
+}
+```
+
+<Warning>
+This event is **not sent by Lavalink**. It's dispatched artificially by DisGoLink when calling `player.Update(ctx, lavalink.WithPaused(false))`.
+</Warning>
+
+**Example Handler:**
+
+```go
+if event, ok := e.(lavalink.PlayerResumeEvent); ok {
+    fmt.Printf("▶️  Player resumed in guild %d\n", event.GuildID_)
+}
+```
+
+### StatsMessage
+
+Fired periodically with node statistics:
+
+```go
+type StatsMessage Stats
+```
+
+Contains CPU usage, memory usage, uptime, player count, and frame statistics.
+
+**Example Handler:**
+
+```go
+if event, ok := e.(lavalink.StatsMessage); ok {
+    stats := lavalink.Stats(event)
+    fmt.Printf("📈 Node stats: CPU=%.2f%%, Memory=%dMB, Players=%d\n",
+        stats.CPU.SystemLoad*100,
+        stats.Memory.Used/1024/1024,
+        stats.Players)
+}
+```
+
+<Note>
+For `StatsMessage` events, the player parameter passed to `OnEvent()` is nil since stats are node-level, not player-specific.
+</Note>
+
+## Complete Example
+
+Here's a complete event listener implementation:
+
+```go
+type MyEventListener struct {
+    queue map[snowflake.ID][]lavalink.Track // guild ID -> track queue
+    mu    sync.RWMutex
+}
+
+func (l *MyEventListener) OnEvent(p disgolink.Player, e lavalink.Message) {
+    switch event := e.(type) {
+    case lavalink.TrackStartEvent:
+        fmt.Printf("▶️  [%d] Now playing: %s\n", 
+            event.GuildID_, 
+            event.Track.Info.Title)
+
+    case lavalink.TrackEndEvent:
+        fmt.Printf("⏹️  [%d] Track ended: %s\n", 
+            event.GuildID_, 
+            event.Reason)
+        
+        if event.Reason.MayStartNext() {
+            l.playNext(p)
+        }
+
+    case lavalink.TrackExceptionEvent:
+        fmt.Printf("❌ [%d] Track error: %s\n", 
+            event.GuildID_, 
+            event.Exception.Message)
+        l.playNext(p)
+
+    case lavalink.TrackStuckEvent:
+        fmt.Printf("⚠️  [%d] Track stuck for %dms\n", 
+            event.GuildID_, 
+            event.Threshold)
+        l.playNext(p)
+
+    case lavalink.WebSocketClosedEvent:
+        fmt.Printf("🔌 [%d] Voice disconnected: %s (code %d)\n",
+            event.GuildID_,
+            event.Reason,
+            event.Code)
+
+    case lavalink.PlayerPauseEvent:
+        fmt.Printf("⏸️  [%d] Paused\n", event.GuildID_)
+
+    case lavalink.PlayerResumeEvent:
+        fmt.Printf("▶️  [%d] Resumed\n", event.GuildID_)
+
+    case lavalink.PlayerUpdateMessage:
+        // Update UI with current position
+        if p != nil && p.Track() != nil {
+            progress := float64(event.State.Position) / float64(p.Track().Info.Length) * 100
+            fmt.Printf("📊 [%d] Progress: %.1f%%\n", event.GuildID, progress)
+        }
+
+    case lavalink.StatsMessage:
+        stats := lavalink.Stats(event)
+        if stats.CPU.LavalinkLoad > 0.8 {
+            fmt.Printf("⚠️  High CPU usage: %.2f%%\n", stats.CPU.LavalinkLoad*100)
+        }
+    }
+}
+
+func (l *MyEventListener) playNext(p disgolink.Player) {
+    l.mu.Lock()
+    defer l.mu.Unlock()
+    
+    queue := l.queue[p.GuildID()]
+    if len(queue) == 0 {
+        return
+    }
+    
+    next := queue[0]
+    l.queue[p.GuildID()] = queue[1:]
+    
+    _ = p.Update(context.Background(), lavalink.WithTrack(next))
+}
+
+// Register the listener
+client := disgolink.New(userID, 
+    disgolink.WithListeners(&MyEventListener{
+        queue: make(map[snowflake.ID][]lavalink.Track),
+    }),
+)
+```
+
+## Best Practices
+
+<Warning>
+Event handlers should be fast and non-blocking. Long operations should be done in goroutines.
+</Warning>
+
+```go
+// Bad: blocking event handler
+func (l *MyListener) OnEvent(p disgolink.Player, e lavalink.Message) {
+    if event, ok := e.(lavalink.TrackStartEvent); ok {
+        time.Sleep(5 * time.Second) // Blocks all events!
+        sendDiscordMessage(event.Track.Info.Title)
+    }
+}
+
+// Good: non-blocking event handler
+func (l *MyListener) OnEvent(p disgolink.Player, e lavalink.Message) {
+    if event, ok := e.(lavalink.TrackStartEvent); ok {
+        go sendDiscordMessage(event.Track.Info.Title) // Non-blocking
+    }
+}
+```
+
+<Info>
+DisGoLink recovers from panics in event handlers and logs them, but it's best practice to handle errors gracefully.
+</Info>

@@ -1,0 +1,402 @@
+---
+title: Filters
+description: Audio filters and effects for Lavalink players
+---
+
+## Filters
+
+The `Filters` struct contains all available audio filters that can be applied to a player.
+
+```go
+type Filters struct {
+    Volume        *Volume        `json:"volume,omitempty"`
+    Equalizer     *Equalizer     `json:"equalizer,omitempty"`
+    Timescale     *Timescale     `json:"timescale,omitempty"`
+    Tremolo       *Tremolo       `json:"tremolo,omitempty"`
+    Vibrato       *Vibrato       `json:"vibrato,omitempty"`
+    Rotation      *Rotation      `json:"rotation,omitempty"`
+    Karaoke       *Karaoke       `json:"karaoke,omitempty"`
+    Distortion    *Distortion    `json:"distortion,omitempty"`
+    ChannelMix    *ChannelMix    `json:"channelMix,omitempty"`
+    LowPass       *LowPass       `json:"lowPass,omitempty"`
+    PluginFilters map[string]any `json:"pluginFilters,omitempty"`
+}
+```
+
+### Default Filters
+
+The list of built-in filter names:
+
+```go
+var DefaultFilters = []string{
+    "volume", "equalizer", "timescale", "tremolo", "vibrato",
+    "rotation", "karaoke", "distortion", "channelMix", "lowPass"
+}
+```
+
+## Volume
+
+Controls the playback volume.
+
+```go
+type Volume float32
+```
+
+<ParamField path="Volume" type="float32" default="1.0">
+  Volume level where:
+  - `1.0` = 100% (normal volume)
+  - `0.5` = 50% (half volume)
+  - `2.0` = 200% (double volume)
+  - Range: `0.0` to `5.0`
+</ParamField>
+
+### Example
+
+```go
+volume := lavalink.Volume(0.75) // 75% volume
+filters := lavalink.Filters{
+    Volume: &volume,
+}
+```
+
+## Equalizer
+
+15-band equalizer with adjustable gain for each frequency band.
+
+```go
+type Equalizer [15]float32
+```
+
+<ParamField path="Equalizer" type="[15]float32">
+  Array of 15 gain values, one for each frequency band:
+  - Band 0: 25 Hz
+  - Band 1: 40 Hz
+  - Band 2: 63 Hz
+  - Band 3: 100 Hz
+  - Band 4: 160 Hz
+  - Band 5: 250 Hz
+  - Band 6: 400 Hz
+  - Band 7: 630 Hz
+  - Band 8: 1 kHz
+  - Band 9: 1.6 kHz
+  - Band 10: 2.5 kHz
+  - Band 11: 4 kHz
+  - Band 12: 6.3 kHz
+  - Band 13: 10 kHz
+  - Band 14: 16 kHz
+  
+  Gain range: `-0.25` to `1.0` (where `0.0` is neutral)
+</ParamField>
+
+### Example
+
+```go
+// Bass boost preset
+equalizer := lavalink.Equalizer{}
+equalizer[0] = 0.2  // 25 Hz
+equalizer[1] = 0.15 // 40 Hz
+equalizer[2] = 0.1  // 63 Hz
+equalizer[3] = 0.05 // 100 Hz
+// ... other bands remain at 0.0
+
+filters := lavalink.Filters{
+    Equalizer: &equalizer,
+}
+```
+
+## Timescale
+
+Changes the speed, pitch, and rate of the audio.
+
+<ParamField path="Speed" type="float64" default="1.0">
+  Playback speed multiplier. Range: `> 0`
+  - `1.0` = normal speed
+  - `2.0` = double speed
+  - `0.5` = half speed
+</ParamField>
+
+<ParamField path="Pitch" type="float64" default="1.0">
+  Pitch multiplier. Range: `> 0`
+  - `1.0` = normal pitch
+  - `2.0` = one octave higher
+  - `0.5` = one octave lower
+</ParamField>
+
+<ParamField path="Rate" type="float64" default="1.0">
+  Audio rate multiplier. Range: `> 0`
+</ParamField>
+
+### Example
+
+```go
+timescale := lavalink.Timescale{
+    Speed: 1.25, // 25% faster
+    Pitch: 1.0,  // same pitch
+    Rate:  1.0,
+}
+filters := lavalink.Filters{
+    Timescale: &timescale,
+}
+```
+
+## Tremolo
+
+Creates a tremolo effect by oscillating the volume.
+
+<ParamField path="Frequency" type="float32" default="2.0">
+  Oscillation frequency in Hz. Range: `> 0`
+</ParamField>
+
+<ParamField path="Depth" type="float32" default="0.5">
+  Tremolo depth. Range: `0.0` to `1.0`
+</ParamField>
+
+### Example
+
+```go
+tremolo := lavalink.Tremolo{
+    Frequency: 4.0,
+    Depth:     0.75,
+}
+filters := lavalink.Filters{
+    Tremolo: &tremolo,
+}
+```
+
+## Vibrato
+
+Creates a vibrato effect by oscillating the pitch.
+
+<ParamField path="Frequency" type="float32" default="2.0">
+  Oscillation frequency in Hz. Range: `0.0` to `14.0`
+</ParamField>
+
+<ParamField path="Depth" type="float32" default="0.5">
+  Vibrato depth. Range: `0.0` to `1.0`
+</ParamField>
+
+### Example
+
+```go
+vibrato := lavalink.Vibrato{
+    Frequency: 5.0,
+    Depth:     0.8,
+}
+filters := lavalink.Filters{
+    Vibrato: &vibrato,
+}
+```
+
+## Rotation
+
+Rotates the audio around the stereo field (8D audio effect).
+
+<ParamField path="RotationHz" type="int" default="5">
+  Rotation speed in Hz (rotations per second)
+</ParamField>
+
+### Example
+
+```go
+rotation := lavalink.Rotation{
+    RotationHz: 3,
+}
+filters := lavalink.Filters{
+    Rotation: &rotation,
+}
+```
+
+## Karaoke
+
+Attempts to remove vocals from the audio.
+
+<ParamField path="Level" type="float32" default="1.0">
+  Filter level
+</ParamField>
+
+<ParamField path="MonoLevel" type="float32" default="1.0">
+  Mono level
+</ParamField>
+
+<ParamField path="FilterBand" type="float32" default="220.0">
+  Filter band in Hz
+</ParamField>
+
+<ParamField path="FilterWidth" type="float32" default="100.0">
+  Filter width
+</ParamField>
+
+### Example
+
+```go
+karaoke := lavalink.Karaoke{
+    Level:       1.0,
+    MonoLevel:   1.0,
+    FilterBand:  220.0,
+    FilterWidth: 100.0,
+}
+filters := lavalink.Filters{
+    Karaoke: &karaoke,
+}
+```
+
+## Distortion
+
+Applies distortion using sine, cosine, and tangent functions.
+
+<ParamField path="SinOffset" type="float32" default="0.0">
+  Sine offset
+</ParamField>
+
+<ParamField path="SinScale" type="float32" default="1.0">
+  Sine scale
+</ParamField>
+
+<ParamField path="CosOffset" type="float32" default="0.0">
+  Cosine offset
+</ParamField>
+
+<ParamField path="CosScale" type="float32" default="1.0">
+  Cosine scale
+</ParamField>
+
+<ParamField path="TanOffset" type="float32" default="0.0">
+  Tangent offset
+</ParamField>
+
+<ParamField path="TanScale" type="float32" default="1.0">
+  Tangent scale
+</ParamField>
+
+<ParamField path="Offset" type="float32" default="0.0">
+  General offset
+</ParamField>
+
+<ParamField path="Scale" type="float32" default="1.0">
+  General scale
+</ParamField>
+
+### Example
+
+```go
+distortion := lavalink.Distortion{
+    SinOffset: 0.0,
+    SinScale:  1.0,
+    CosOffset: 0.0,
+    CosScale:  1.0,
+    TanOffset: 0.0,
+    TanScale:  1.0,
+    Offset:    0.0,
+    Scale:     1.0,
+}
+filters := lavalink.Filters{
+    Distortion: &distortion,
+}
+```
+
+## ChannelMix
+
+Mixes the left and right audio channels.
+
+<ParamField path="LeftToLeft" type="float32" default="1.0">
+  Left channel to left output. Range: `0.0` to `1.0`
+</ParamField>
+
+<ParamField path="LeftToRight" type="float32" default="0.0">
+  Left channel to right output. Range: `0.0` to `1.0`
+</ParamField>
+
+<ParamField path="RightToLeft" type="float32" default="0.0">
+  Right channel to left output. Range: `0.0` to `1.0`
+</ParamField>
+
+<ParamField path="RightToRight" type="float32" default="1.0">
+  Right channel to right output. Range: `0.0` to `1.0`
+</ParamField>
+
+### Example
+
+```go
+// Swap left and right channels
+channelMix := lavalink.ChannelMix{
+    LeftToLeft:   0.0,
+    LeftToRight:  1.0,
+    RightToLeft:  1.0,
+    RightToRight: 0.0,
+}
+filters := lavalink.Filters{
+    ChannelMix: &channelMix,
+}
+```
+
+## LowPass
+
+Applies a low-pass filter to suppress higher frequencies.
+
+<ParamField path="Smoothing" type="float64" default="20.0">
+  Smoothing factor. Higher values mean more aggressive filtering
+</ParamField>
+
+### Example
+
+```go
+lowPass := lavalink.LowPass{
+    Smoothing: 20.0,
+}
+filters := lavalink.Filters{
+    LowPass: &lowPass,
+}
+```
+
+## PluginFilters
+
+Custom filters provided by Lavalink plugins.
+
+<ParamField path="PluginFilters" type="map[string]any">
+  Map of plugin filter names to their configuration. The structure depends on the specific plugin.
+</ParamField>
+
+### Example
+
+```go
+filters := lavalink.Filters{
+    PluginFilters: map[string]any{
+        "myCustomFilter": map[string]any{
+            "param1": 100,
+            "param2": "value",
+        },
+    },
+}
+```
+
+## Applying Filters
+
+Filters are applied using the player update mechanism:
+
+```go
+filters := lavalink.Filters{
+    Volume: ptr(lavalink.Volume(0.5)),
+    Equalizer: &lavalink.Equalizer{
+        // bass boost
+        0.2, 0.15, 0.1, 0.05, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    },
+}
+
+err := client.UpdatePlayer(
+    context.TODO(),
+    guildID,
+    lavalink.WithFilters(filters),
+)
+```
+
+## Removing Filters
+
+To remove a filter, update the player with `nil` or an empty `Filters` struct:
+
+```go
+err := client.UpdatePlayer(
+    context.TODO(),
+    guildID,
+    lavalink.WithFilters(lavalink.Filters{}),
+)
+```

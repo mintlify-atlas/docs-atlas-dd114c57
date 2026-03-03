@@ -1,0 +1,390 @@
+---
+title: 'DiscordGo Integration'
+description: 'Integrate DisGoLink with the DiscordGo Discord library'
+---
+
+DiscordGo is a popular Discord library for Go. While it uses string-based IDs, DisGoLink requires `snowflake.ID` types. This guide shows you how to integrate them properly.
+
+## Compatibility Note
+
+<Warning>
+**Snowflake Type Differences**: DiscordGo uses `string` for IDs while DisGoLink uses `github.com/disgoorg/snowflake/v2.ID` (uint64-based). You'll need to convert between them.
+</Warning>
+
+## Installation
+
+```bash
+go get github.com/bwmarrin/discordgo
+go get github.com/disgoorg/disgolink/v3
+go get github.com/disgoorg/snowflake/v2
+```
+
+## Basic Setup
+
+Here's a complete example showing how to integrate DisGoLink with DiscordGo:
+
+```go
+package main
+
+import (
+    "context"
+    "os"
+    "time"
+
+    "github.com/bwmarrin/discordgo"
+    "github.com/disgoorg/snowflake/v2"
+    "github.com/disgoorg/disgolink/v3/disgolink"
+    "github.com/disgoorg/log"
+)
+
+type Bot struct {
+    Session  *discordgo.Session
+    Lavalink disgolink.Client
+}
+
+func main() {
+    log.SetLevel(log.LevelInfo)
+    log.Info("starting discordgo example...")
+
+    b := &Bot{}
+
+    // Create DiscordGo session
+    session, err := discordgo.New("Bot " + os.Getenv("TOKEN"))
+    if err != nil {
+        log.Fatal(err)
+    }
+    b.Session = session
+
+    // Enable voice state tracking
+    session.State.TrackVoice = true
+    session.Identify.Intents = discordgo.IntentGuilds | discordgo.IntentsGuildVoiceStates
+
+    // Register event handlers
+    session.AddHandler(b.onVoiceStateUpdate)
+    session.AddHandler(b.onVoiceServerUpdate)
+
+    if err = session.Open(); err != nil {
+        log.Fatal(err)
+    }
+    defer session.Close()
+
+    // Create DisGoLink client (convert string ID to snowflake.ID)
+    b.Lavalink = disgolink.New(snowflake.MustParse(session.State.User.ID))
+
+    // Add Lavalink node
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+    node, err := b.Lavalink.AddNode(ctx, disgolink.NodeConfig{
+        Name:     "main-node",
+        Address:  "localhost:2333",
+        Password: "youshallnotpass",
+        Secure:   false,
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    log.Infof("Bot is ready! Node version: %s", node.Version(ctx))
+}
+```
+
+## ID Conversion
+
+Since DiscordGo uses strings and DisGoLink uses `snowflake.ID`, you need to convert between them:
+
+<Tabs>
+  <Tab title="String to Snowflake">
+    ```go
+    // Convert DiscordGo string ID to snowflake.ID
+    guildID := snowflake.MustParse("123456789012345678")
+    
+    // With error handling
+    guildID, err := snowflake.Parse("123456789012345678")
+    if err != nil {
+        // Handle invalid ID
+    }
+    
+    // From DiscordGo event
+    guildID := snowflake.MustParse(event.GuildID)
+    ```
+  </Tab>
+  <Tab title="Snowflake to String">
+    ```go
+    // Convert snowflake.ID to string for DiscordGo
+    var id snowflake.ID
+    idString := id.String()
+    
+    // Example usage
+    player := lavalink.Player(guildID)
+    guildString := player.GuildID().String()
+    ```
+  </Tab>
+</Tabs>
+
+## Voice Event Forwarding
+
+<Warning>
+**Critical**: You must forward voice events to DisGoLink for audio to work.
+</Warning>
+
+### OnVoiceStateUpdate
+
+This handler must convert DiscordGo's string IDs to snowflake IDs:
+
+```go
+func (b *Bot) onVoiceStateUpdate(session *discordgo.Session, event *discordgo.VoiceStateUpdate) {
+    // Only handle events for our bot
+    if event.UserID != session.State.User.ID {
+        return
+    }
+
+    // Convert IDs and forward to DisGoLink
+    var channelID *snowflake.ID
+    if event.ChannelID != "" {
+        id := snowflake.MustParse(event.ChannelID)
+        channelID = &id  // Pointer because it can be nil when disconnected
+    }
+
+    b.Lavalink.OnVoiceStateUpdate(
+        context.TODO(),
+        snowflake.MustParse(event.GuildID),  // Convert guild ID
+        channelID,                            // nil when bot leaves voice
+        event.SessionID,                      // Session ID is already a string
+    )
+
+    // Optional: Clean up when bot leaves voice
+    if event.ChannelID == "" {
+        // Bot disconnected from voice channel
+        // Clean up your queues, etc.
+    }
+}
+```
+
+### OnVoiceServerUpdate
+
+This handler provides the voice server connection information:
+
+```go
+func (b *Bot) onVoiceServerUpdate(session *discordgo.Session, event *discordgo.VoiceServerUpdate) {
+    // Convert guild ID and forward to DisGoLink
+    b.Lavalink.OnVoiceServerUpdate(
+        context.TODO(),
+        snowflake.MustParse(event.GuildID),
+        event.Token,
+        event.Endpoint,
+    )
+}
+```
+
+## Player Management
+
+### Playing a Track
+
+```go
+func (b *Bot) playTrack(guildIDString string, query string) error {
+    // Convert string ID to snowflake
+    guildID := snowflake.MustParse(guildIDString)
+
+    // Get or create player
+    player := b.Lavalink.Player(guildID)
+
+    // Load and play track
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+
+    return b.Lavalink.BestNode().LoadTracksHandler(ctx, query,
+        disgolink.NewResultHandler(
+            func(track lavalink.Track) {
+                player.Update(context.TODO(), lavalink.WithTrack(track))
+                log.Infof("Playing: %s", track.Info.Title)
+            },
+            func(playlist lavalink.Playlist) {
+                player.Update(context.TODO(), lavalink.WithTrack(playlist.Tracks[0]))
+                log.Infof("Playing playlist: %s", playlist.Info.Name)
+            },
+            func(tracks []lavalink.Track) {
+                player.Update(context.TODO(), lavalink.WithTrack(tracks[0]))
+                log.Infof("Playing search result: %s", tracks[0].Info.Title)
+            },
+            func() {
+                log.Warn("No tracks found")
+            },
+            func(err error) {
+                log.Errorf("Error loading track: %v", err)
+            },
+        ),
+    )
+}
+```
+
+### Joining Voice Channel
+
+```go
+// DiscordGo uses ChannelVoiceJoinManual for manual voice connections
+func (b *Bot) joinVoice(guildID, channelID string) error {
+    // Tell Discord we want to join
+    err := b.Session.ChannelVoiceJoinManual(guildID, channelID, false, false)
+    if err != nil {
+        return err
+    }
+
+    // The onVoiceStateUpdate and onVoiceServerUpdate handlers
+    // will forward the events to DisGoLink automatically
+    return nil
+}
+
+// Leave voice channel
+func (b *Bot) leaveVoice(guildID string) error {
+    return b.Session.ChannelVoiceJoinManual(guildID, "", false, false)
+}
+```
+
+## Listening to Player Events
+
+Register event listeners when creating the DisGoLink client:
+
+```go
+b.Lavalink = disgolink.New(snowflake.MustParse(session.State.User.ID),
+    disgolink.WithListenerFunc(b.onTrackStart),
+    disgolink.WithListenerFunc(b.onTrackEnd),
+    disgolink.WithListenerFunc(b.onTrackException),
+    disgolink.WithListenerFunc(b.onWebSocketClosed),
+)
+```
+
+Implement the handlers:
+
+```go
+func (b *Bot) onTrackStart(player disgolink.Player, event lavalink.TrackStartEvent) {
+    log.Infof("Track started in guild %s: %s",
+        event.GuildID().String(),  // Convert snowflake to string
+        event.Track.Info.Title,
+    )
+}
+
+func (b *Bot) onTrackEnd(player disgolink.Player, event lavalink.TrackEndEvent) {
+    if !event.Reason.MayStartNext() {
+        return
+    }
+
+    // Load next track from your queue
+    guildIDString := event.GuildID().String()
+    // Your queue logic here...
+}
+
+func (b *Bot) onTrackException(player disgolink.Player, event lavalink.TrackExceptionEvent) {
+    log.Errorf("Track exception: %s (severity: %s)",
+        event.Exception.Message,
+        event.Exception.Severity,
+    )
+}
+
+func (b *Bot) onWebSocketClosed(player disgolink.Player, event lavalink.WebSocketClosedEvent) {
+    log.Warnf("Voice connection closed: %d - %s", event.Code, event.Reason)
+}
+```
+
+## Player Controls
+
+```go
+guildID := snowflake.MustParse("123456789012345678")
+player := b.Lavalink.Player(guildID)
+
+// Pause/Resume
+player.Update(context.TODO(), lavalink.WithPaused(true))
+
+// Volume control (0-1000)
+player.Update(context.TODO(), lavalink.WithVolume(80))
+
+// Seek
+player.Update(context.TODO(), lavalink.WithPosition(lavalink.Duration(30000)))
+
+// Stop
+player.Update(context.TODO(), lavalink.WithNullTrack())
+```
+
+## Working Example
+
+### Command Handler Example
+
+```go
+func (b *Bot) onApplicationCommand(session *discordgo.Session, event *discordgo.InteractionCreate) {
+    data := event.ApplicationCommandData()
+
+    switch data.Name {
+    case "play":
+        // Get user's voice channel
+        guild, err := session.State.Guild(event.GuildID)
+        if err != nil {
+            return
+        }
+
+        var voiceChannelID string
+        for _, vs := range guild.VoiceStates {
+            if vs.UserID == event.Member.User.ID {
+                voiceChannelID = vs.ChannelID
+                break
+            }
+        }
+
+        if voiceChannelID == "" {
+            session.InteractionRespond(event.Interaction, &discordgo.InteractionResponse{
+                Type: discordgo.InteractionResponseChannelMessageWithSource,
+                Data: &discordgo.InteractionResponseData{
+                    Content: "You need to be in a voice channel!",
+                },
+            })
+            return
+        }
+
+        // Join voice channel
+        b.joinVoice(event.GuildID, voiceChannelID)
+
+        // Get query from command options
+        query := data.Options[0].StringValue()
+
+        // Play track
+        b.playTrack(event.GuildID, query)
+    }
+}
+```
+
+## Complete Example
+
+Check out the full working example with commands and queue management:
+
+[View DiscordGo Example on GitHub](https://github.com/disgoorg/disgolink/tree/master/_examples/discordgo)
+
+## Troubleshooting
+
+### Voice Connection Issues
+
+- Ensure `session.State.TrackVoice = true` is set
+- Verify both voice event handlers are registered
+- Check that ID conversions are correct (no empty strings)
+- Make sure you have the `IntentsGuildVoiceStates` intent
+
+### Type Conversion Errors
+
+```go
+// WRONG - Will panic if ID is invalid
+guildID := snowflake.MustParse(possiblyInvalidID)
+
+// CORRECT - Handle errors
+guildID, err := snowflake.Parse(possiblyInvalidID)
+if err != nil {
+    log.Errorf("Invalid guild ID: %v", err)
+    return
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Player Guide" icon="circle-play" href="/guides/playing-audio">
+    Learn about player management and controls
+  </Card>
+  <Card title="Track Loading" icon="music" href="/guides/loading-tracks">
+    Load tracks from various sources
+  </Card>
+</CardGroup>

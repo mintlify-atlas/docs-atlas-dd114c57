@@ -1,0 +1,267 @@
+---
+title: Client
+description: The main entry point for interacting with Lavalink nodes
+---
+
+The `Client` interface is the core component of DisGoLink, managing Lavalink nodes, players, and event listeners.
+
+## Creating a Client
+
+Create a new client with `disgolink.New()`:
+
+```go
+import (
+    "github.com/disgoorg/disgolink/v3"
+    "github.com/disgoorg/snowflake/v2"
+)
+
+client := disgolink.New(userID)
+```
+
+<ParamField path="userID" type="snowflake.ID" required>
+  The Discord bot's user ID
+</ParamField>
+
+## Configuration Options
+
+Customize the client with `ConfigOpt` functions:
+
+```go
+client := disgolink.New(userID,
+    disgolink.WithLogger(customLogger),
+    disgolink.WithHTTPClient(httpClient),
+    disgolink.WithListeners(listener1, listener2),
+    disgolink.WithPlugins(plugin1, plugin2),
+)
+```
+
+### Available Options
+
+<ParamField path="WithLogger" type="func(*slog.Logger) ConfigOpt">
+  Inject a custom structured logger
+</ParamField>
+
+<ParamField path="WithHTTPClient" type="func(*http.Client) ConfigOpt">
+  Provide a custom HTTP client for REST requests (default timeout: 10s)
+</ParamField>
+
+<ParamField path="WithListeners" type="func(...EventListener) ConfigOpt">
+  Register event listeners at initialization
+</ParamField>
+
+<ParamField path="WithListenerFunc" type="func[E lavalink.Message](func(Player, E)) ConfigOpt">
+  Register a typed event listener function
+</ParamField>
+
+<ParamField path="WithPlugins" type="func(...Plugin) ConfigOpt">
+  Add plugins to extend functionality
+</ParamField>
+
+## Node Management
+
+### Adding Nodes
+
+Connect to a Lavalink server:
+
+```go
+node, err := client.AddNode(ctx, disgolink.NodeConfig{
+    Name:      "main-node",
+    Address:   "localhost:2333",
+    Password:  "youshallnotpass",
+    Secure:    false,
+    SessionID: "", // Optional: for session resuming
+})
+```
+
+<ParamField path="AddNode" type="func(context.Context, NodeConfig) (Node, error)">
+  Adds and connects to a new Lavalink node. Returns immediately after establishing connection.
+</ParamField>
+
+### Retrieving Nodes
+
+<ParamField path="Node" type="func(name string) Node">
+  Get a specific node by name
+</ParamField>
+
+<ParamField path="BestNode" type="func() Node">
+  Automatically select the node with the best performance based on CPU, memory, and system load statistics
+</ParamField>
+
+<ParamField path="ForNodes" type="func(func(Node))">
+  Iterate over all registered nodes
+</ParamField>
+
+<ParamField path="RemoveNode" type="func(name string)">
+  Disconnect and remove a node by name
+</ParamField>
+
+```go
+// Get specific node
+node := client.Node("main-node")
+
+// Get best available node
+bestNode := client.BestNode()
+
+// Iterate all nodes
+client.ForNodes(func(node disgolink.Node) {
+    fmt.Println(node.Config().Name, node.Status())
+})
+```
+
+## Player Management
+
+### Creating Players
+
+<ParamField path="Player" type="func(snowflake.ID) Player">
+  Get or create a player for a guild using the best available node
+</ParamField>
+
+<ParamField path="PlayerOnNode" type="func(Node, snowflake.ID) Player">
+  Get or create a player on a specific node
+</ParamField>
+
+<ParamField path="ExistingPlayer" type="func(snowflake.ID) Player">
+  Get an existing player without creating a new one (returns nil if not found)
+</ParamField>
+
+```go
+// Create/get player on best node
+player := client.Player(guildID)
+
+// Create/get player on specific node
+player := client.PlayerOnNode(node, guildID)
+
+// Check if player exists
+if player := client.ExistingPlayer(guildID); player != nil {
+    // Player exists
+}
+```
+
+### Managing Players
+
+<ParamField path="ForPlayers" type="func(func(Player))">
+  Iterate over all active players
+</ParamField>
+
+<ParamField path="RemovePlayer" type="func(snowflake.ID)">
+  Remove a player from the client's cache (does not destroy the player on the node)
+</ParamField>
+
+```go
+// Iterate all players
+client.ForPlayers(func(player disgolink.Player) {
+    fmt.Printf("Guild: %d, Track: %v\n", player.GuildID(), player.Track())
+})
+```
+
+## Event System
+
+### Adding Listeners
+
+<ParamField path="AddListeners" type="func(...EventListener)">
+  Register one or more event listeners
+</ParamField>
+
+<ParamField path="RemoveListeners" type="func(...EventListener)">
+  Unregister event listeners
+</ParamField>
+
+<ParamField path="EmitEvent" type="func(Player, lavalink.Message)">
+  Manually emit an event to all registered listeners (typically used internally)
+</ParamField>
+
+```go
+// Add listener
+client.AddListeners(myListener)
+
+// Add typed listener function
+client.AddListeners(disgolink.NewListenerFunc(func(p disgolink.Player, e lavalink.TrackStartEvent) {
+    fmt.Printf("Track started: %s\n", e.Track.Info.Title)
+}))
+```
+
+See the [Events](/core-concepts/events) page for details on implementing listeners.
+
+## Voice State Updates
+
+Forward Discord voice events to the client:
+
+<ParamField path="OnVoiceServerUpdate" type="func(context.Context, snowflake.ID, string, string)">
+  Handle Discord VOICE_SERVER_UPDATE events
+  
+  **Parameters:**
+  - `ctx`: Context
+  - `guildID`: Guild snowflake ID
+  - `token`: Voice connection token
+  - `endpoint`: Voice server endpoint
+</ParamField>
+
+<ParamField path="OnVoiceStateUpdate" type="func(context.Context, snowflake.ID, *snowflake.ID, string)">
+  Handle Discord VOICE_STATE_UPDATE events
+  
+  **Parameters:**
+  - `ctx`: Context
+  - `guildID`: Guild snowflake ID
+  - `channelID`: Voice channel ID (nil if disconnected)
+  - `sessionID`: Voice session ID
+</ParamField>
+
+```go
+// In your Discord event handler
+func handleVoiceServerUpdate(event *gateway.EventVoiceServerUpdate) {
+    client.OnVoiceServerUpdate(context.Background(), event.GuildID, event.Token, event.Endpoint)
+}
+
+func handleVoiceStateUpdate(event *gateway.EventVoiceStateUpdate) {
+    if event.UserID != botUserID {
+        return
+    }
+    client.OnVoiceStateUpdate(context.Background(), event.GuildID, event.ChannelID, event.SessionID)
+}
+```
+
+<Warning>
+Both voice events must be forwarded to DisGoLink for proper voice connection establishment.
+</Warning>
+
+## Additional Methods
+
+<ParamField path="UserID" type="func() snowflake.ID">
+  Get the bot's user ID
+</ParamField>
+
+<ParamField path="Close" type="func()">
+  Close all node connections and shut down the client
+</ParamField>
+
+```go
+// Get user ID
+userID := client.UserID()
+
+// Shutdown
+defer client.Close()
+```
+
+## Plugin System
+
+Extend client functionality with plugins:
+
+<ParamField path="AddPlugins" type="func(...Plugin)">
+  Register plugins
+</ParamField>
+
+<ParamField path="ForPlugins" type="func(func(Plugin))">
+  Iterate over registered plugins
+</ParamField>
+
+<ParamField path="RemovePlugins" type="func(...Plugin)">
+  Unregister plugins
+</ParamField>
+
+```go
+client.AddPlugins(myPlugin)
+```
+
+<Note>
+Plugins can implement various interfaces like `PluginEventHandler`, `EventPlugin`, and `OpPlugin` to hook into different lifecycle events.
+</Note>

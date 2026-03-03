@@ -1,0 +1,396 @@
+---
+title: Load Result
+description: Track loading results and load types
+---
+
+## LoadResult
+
+Represents the result of loading tracks from Lavalink.
+
+```go
+type LoadResult struct {
+    LoadType LoadType       `json:"loadType"`
+    Data     LoadResultData `json:"data"`
+}
+```
+
+<ResponseField name="LoadType" type="LoadType">
+  The type of result returned (track, playlist, search, empty, or error)
+</ResponseField>
+
+<ResponseField name="Data" type="LoadResultData">
+  The actual data, which varies based on the LoadType. Can be one of:
+  - `Track` - Single track loaded
+  - `Playlist` - Playlist loaded
+  - `Search` - Search results (slice of tracks)
+  - `Empty` - No results found
+  - `Exception` - Error occurred
+</ResponseField>
+
+## LoadType
+
+Indicates what type of data was loaded.
+
+```go
+type LoadType string
+```
+
+### Constants
+
+<ParamField path="LoadTypeTrack" type="LoadType" default="track">
+  A single track was loaded successfully
+</ParamField>
+
+<ParamField path="LoadTypePlaylist" type="LoadType" default="playlist">
+  A playlist was loaded successfully
+</ParamField>
+
+<ParamField path="LoadTypeSearch" type="LoadType" default="search">
+  Search results were returned (multiple tracks)
+</ParamField>
+
+<ParamField path="LoadTypeEmpty" type="LoadType" default="empty">
+  No matches were found
+</ParamField>
+
+<ParamField path="LoadTypeError" type="LoadType" default="error">
+  An error occurred while loading
+</ParamField>
+
+## LoadResultData Interface
+
+Marker interface implemented by all load result data types.
+
+```go
+type LoadResultData interface {
+    loadResultData()
+}
+```
+
+Implemented by:
+- `Track`
+- `Playlist`
+- `Search`
+- `Empty`
+- `Exception`
+
+## Track Result
+
+When `LoadType` is `LoadTypeTrack`, the `Data` field contains a single `Track`.
+
+<ResponseField name="Encoded" type="string">
+  Base64-encoded track data
+</ResponseField>
+
+<ResponseField name="Info" type="TrackInfo">
+  Information about the track
+  
+  <Expandable title="TrackInfo fields">
+    <ResponseField name="Identifier" type="string">
+      The track identifier (e.g., YouTube video ID)
+    </ResponseField>
+    
+    <ResponseField name="Author" type="string">
+      The track author/artist
+    </ResponseField>
+    
+    <ResponseField name="Length" type="Duration">
+      Track length in milliseconds
+    </ResponseField>
+    
+    <ResponseField name="IsStream" type="bool">
+      Whether this is a live stream
+    </ResponseField>
+    
+    <ResponseField name="Title" type="string">
+      The track title
+    </ResponseField>
+    
+    <ResponseField name="URI" type="*string">
+      The track URI (nullable)
+    </ResponseField>
+    
+    <ResponseField name="SourceName" type="string">
+      Source name (e.g., "youtube", "soundcloud")
+    </ResponseField>
+    
+    <ResponseField name="Position" type="Duration">
+      Current position in milliseconds
+    </ResponseField>
+    
+    <ResponseField name="ArtworkURL" type="*string">
+      URL to track artwork (nullable)
+    </ResponseField>
+    
+    <ResponseField name="ISRC" type="*string">
+      International Standard Recording Code (nullable)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="PluginInfo" type="RawData">
+  Additional information from plugins (raw JSON)
+</ResponseField>
+
+<ResponseField name="UserData" type="RawData">
+  Custom user data (raw JSON)
+</ResponseField>
+
+### Example
+
+```json
+{
+  "loadType": "track",
+  "data": {
+    "encoded": "QAAAjQIAJVJpY2sgQXN0bGV5IC0gTmV2ZXIgR29ubmEgR2l2ZSBZb3UgVXA...",
+    "info": {
+      "identifier": "dQw4w9WgXcQ",
+      "title": "Rick Astley - Never Gonna Give You Up",
+      "author": "Rick Astley",
+      "length": 213000,
+      "isStream": false,
+      "uri": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "sourceName": "youtube",
+      "position": 0,
+      "artworkUrl": "https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg",
+      "isrc": null
+    },
+    "pluginInfo": {},
+    "userData": {}
+  }
+}
+```
+
+## Playlist Result
+
+When `LoadType` is `LoadTypePlaylist`, the `Data` field contains a `Playlist`.
+
+<ResponseField name="Info" type="PlaylistInfo">
+  Playlist metadata
+  
+  <Expandable title="PlaylistInfo fields">
+    <ResponseField name="Name" type="string">
+      The playlist name
+    </ResponseField>
+    
+    <ResponseField name="SelectedTrack" type="int">
+      Index of the selected track (or -1 if none)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="PluginInfo" type="RawData">
+  Additional information from plugins (raw JSON)
+</ResponseField>
+
+<ResponseField name="Tracks" type="[]Track">
+  Array of tracks in the playlist
+</ResponseField>
+
+### Example
+
+```json
+{
+  "loadType": "playlist",
+  "data": {
+    "info": {
+      "name": "My Awesome Playlist",
+      "selectedTrack": 0
+    },
+    "pluginInfo": {},
+    "tracks": [
+      {
+        "encoded": "QAAAjQIA...",
+        "info": { /* ... */ }
+      },
+      {
+        "encoded": "QAAAkAIB...",
+        "info": { /* ... */ }
+      }
+    ]
+  }
+}
+```
+
+### Usage
+
+```go
+if playlist, ok := result.Data.(lavalink.Playlist); ok {
+    fmt.Printf("Loaded playlist: %s\n", playlist.Info.Name)
+    fmt.Printf("Tracks: %d\n", len(playlist.Tracks))
+    
+    if playlist.Info.SelectedTrack >= 0 {
+        track := playlist.Tracks[playlist.Info.SelectedTrack]
+        // Play the selected track
+    }
+}
+```
+
+## Search Result
+
+When `LoadType` is `LoadTypeSearch`, the `Data` field contains a `Search` (slice of tracks).
+
+```go
+type Search []Track
+```
+
+### Example
+
+```json
+{
+  "loadType": "search",
+  "data": [
+    {
+      "encoded": "QAAAjQIA...",
+      "info": {
+        "identifier": "dQw4w9WgXcQ",
+        "title": "Rick Astley - Never Gonna Give You Up",
+        "author": "Rick Astley",
+        "length": 213000,
+        "isStream": false,
+        "uri": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        "sourceName": "youtube",
+        "position": 0
+      }
+    },
+    // ... more search results
+  ]
+}
+```
+
+### Usage
+
+```go
+if search, ok := result.Data.(lavalink.Search); ok {
+    fmt.Printf("Found %d results\n", len(search))
+    
+    for i, track := range search {
+        fmt.Printf("%d. %s - %s\n", i+1, track.Info.Author, track.Info.Title)
+    }
+}
+```
+
+## Empty Result
+
+When `LoadType` is `LoadTypeEmpty`, the `Data` field contains an `Empty` struct.
+
+```go
+type Empty struct{}
+```
+
+### Example
+
+```json
+{
+  "loadType": "empty",
+  "data": {}
+}
+```
+
+### Usage
+
+```go
+if _, ok := result.Data.(lavalink.Empty); ok {
+    fmt.Println("No results found")
+}
+```
+
+## Exception Result
+
+When `LoadType` is `LoadTypeError`, the `Data` field contains an `Exception`.
+
+<ResponseField name="Message" type="string">
+  The error message
+</ResponseField>
+
+<ResponseField name="Severity" type="Severity">
+  The severity level of the error
+</ResponseField>
+
+<ResponseField name="Cause" type="string">
+  The underlying cause of the error
+</ResponseField>
+
+<ResponseField name="CauseStackTrace" type="string">
+  Stack trace of the error cause
+</ResponseField>
+
+### Severity Levels
+
+<ParamField path="SeverityCommon" type="Severity" default="common">
+  Common errors that can be expected (e.g., track not found)
+</ParamField>
+
+<ParamField path="SeveritySuspicious" type="Severity" default="suspicious">
+  Suspicious errors that might indicate a problem
+</ParamField>
+
+<ParamField path="SeverityFault" type="Severity" default="fault">
+  Severe errors indicating a fault in Lavalink or the source
+</ParamField>
+
+### Example
+
+```json
+{
+  "loadType": "error",
+  "data": {
+    "message": "This video is not available",
+    "severity": "common",
+    "cause": "com.sedmelluq.discord.lavaplayer.tools.FriendlyException",
+    "causeStackTrace": "..."
+  }
+}
+```
+
+### Usage
+
+```go
+if exception, ok := result.Data.(lavalink.Exception); ok {
+    // Exception implements the error interface
+    fmt.Printf("Error: %s\n", exception.Error())
+    fmt.Printf("Severity: %s\n", exception.Severity)
+}
+```
+
+The `Exception` type implements Go's `error` interface:
+
+```go
+func (e Exception) Error() string {
+    return fmt.Sprintf("%s: %s", e.Severity, e.Message)
+}
+```
+
+## Handling Load Results
+
+```go
+result, err := client.LoadTracks(ctx, "ytsearch:never gonna give you up")
+if err != nil {
+    // Handle HTTP/network error
+    return err
+}
+
+switch result.LoadType {
+case lavalink.LoadTypeTrack:
+    track := result.Data.(lavalink.Track)
+    // Play single track
+    
+case lavalink.LoadTypePlaylist:
+    playlist := result.Data.(lavalink.Playlist)
+    // Handle playlist
+    
+case lavalink.LoadTypeSearch:
+    search := result.Data.(lavalink.Search)
+    if len(search) > 0 {
+        // Play first search result
+    }
+    
+case lavalink.LoadTypeEmpty:
+    // No results found
+    
+case lavalink.LoadTypeError:
+    exception := result.Data.(lavalink.Exception)
+    // Handle loading error
+    return exception
+}
+```

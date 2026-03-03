@@ -1,0 +1,258 @@
+---
+title: 'Setting Up Lavalink'
+description: 'Learn how to configure and connect DisGoLink to a Lavalink server'
+icon: 'server'
+---
+
+This guide covers how to set up and connect your DisGoLink client to a Lavalink server.
+
+## Prerequisites
+
+Before connecting to Lavalink, ensure you have:
+- A running Lavalink server instance
+- The server's connection details (address, password)
+- Your Discord bot's application ID
+
+## Creating a DisGoLink Client
+
+<Steps>
+  <Step title="Initialize the client">
+    First, create a DisGoLink client with your bot's application ID:
+
+    ```go
+    import (
+        "github.com/disgoorg/disgolink/v3/disgolink"
+        "github.com/disgoorg/snowflake/v2"
+    )
+
+    // Create the DisGoLink client
+    lavalinkClient := disgolink.New(applicationID)
+    ```
+
+    You can also configure the client with optional settings:
+
+    ```go
+    lavalinkClient := disgolink.New(
+        applicationID,
+        disgolink.WithLogger(customLogger),
+        disgolink.WithHTTPClient(customHTTPClient),
+        disgolink.WithListeners(eventListener),
+    )
+    ```
+  </Step>
+
+  <Step title="Configure the node">
+    Set up your node configuration with the connection details:
+
+    ```go
+    nodeConfig := disgolink.NodeConfig{
+        Name:      "main-node",              // Friendly name for this node
+        Address:   "localhost:2333",         // Lavalink server address
+        Password:  "youshallnotpass",        // Server password
+        Secure:    false,                    // Use WSS/HTTPS (set true for production)
+        SessionID: "",                       // Leave empty for new connections
+    }
+    ```
+
+    **NodeConfig Fields:**
+    - `Name`: A unique identifier for this node
+    - `Address`: The host and port of your Lavalink server
+    - `Password`: Authentication password (configured in Lavalink's application.yml)
+    - `Secure`: Set to `true` to use WSS/HTTPS instead of WS/HTTP
+    - `SessionID`: For resuming existing sessions (leave empty initially)
+  </Step>
+
+  <Step title="Add the node">
+    Connect to the Lavalink server by adding the node:
+
+    ```go
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+
+    node, err := lavalinkClient.AddNode(ctx, nodeConfig)
+    if err != nil {
+        log.Fatalf("Failed to add node: %v", err)
+    }
+    ```
+
+    The `AddNode()` method:
+    - Establishes a WebSocket connection to Lavalink
+    - Authenticates using the provided password
+    - Returns a `Node` interface for interacting with the server
+  </Step>
+
+  <Step title="Verify the connection">
+    Confirm the connection is successful:
+
+    ```go
+    // Get the Lavalink version
+    version, err := node.Version(ctx)
+    if err != nil {
+        log.Fatalf("Failed to get version: %v", err)
+    }
+    log.Printf("Connected to Lavalink %s", version)
+
+    // Get the session ID
+    sessionID := node.SessionID()
+    log.Printf("Session ID: %s", sessionID)
+
+    // Check node status
+    status := node.Status()
+    log.Printf("Node status: %s", status) // CONNECTED
+    ```
+  </Step>
+</Steps>
+
+## Connection Status
+
+DisGoLink tracks the connection state through the `Status` type:
+
+| Status | Description |
+|--------|-------------|
+| `CONNECTING` | Initial connection attempt in progress |
+| `CONNECTED` | Successfully connected to Lavalink |
+| `RECONNECTING` | Attempting to reconnect after disconnection |
+| `DISCONNECTED` | Not connected to the server |
+
+Check the current status:
+
+```go
+if node.Status() == disgolink.StatusConnected {
+    log.Println("Node is ready!")
+}
+```
+
+## Session Resuming
+
+DisGoLink supports session resuming to maintain player state across reconnections.
+
+<Tabs>
+  <Tab title="Enable Resuming">
+    ```go
+    // Update session to enable resuming
+    err := node.Update(ctx, lavalink.SessionUpdate{
+        Resuming:  json.Ptr(true),
+        Timeout:   json.Ptr(60), // Resume timeout in seconds
+    })
+    ```
+  </Tab>
+
+  <Tab title="Resume on Reconnect">
+    ```go
+    // Save the session ID after enabling resuming
+    sessionID := node.SessionID()
+
+    // On restart, provide the session ID to resume
+    nodeConfig := disgolink.NodeConfig{
+        Name:      "main-node",
+        Address:   "localhost:2333",
+        Password:  "youshallnotpass",
+        Secure:    false,
+        SessionID: sessionID, // Use saved session ID
+    }
+
+    node, err := lavalinkClient.AddNode(ctx, nodeConfig)
+    ```
+  </Tab>
+</Tabs>
+
+## Automatic Reconnection
+
+DisGoLink automatically handles reconnection when the connection is lost:
+
+- **Exponential Backoff**: Increases delay between reconnection attempts (up to 30 seconds)
+- **Infinite Retries**: Continues attempting to reconnect indefinitely
+- **State Preservation**: Maintains player state when session resuming is enabled
+
+```go
+// Monitor connection status through logs
+logger := slog.Default()
+lavalinkClient := disgolink.New(
+    applicationID,
+    disgolink.WithLogger(logger),
+)
+```
+
+The client will log reconnection attempts automatically:
+
+```
+INFO  opening connection to node...
+ERROR failed to reconnect node try=0
+INFO  successfully resumed session session_id=abc123
+```
+
+## Managing Multiple Nodes
+
+You can connect to multiple Lavalink servers for load balancing:
+
+```go
+// Add multiple nodes
+node1, _ := lavalinkClient.AddNode(ctx, disgolink.NodeConfig{
+    Name:     "node-1",
+    Address:  "lava1.example.com:2333",
+    Password: "password1",
+})
+
+node2, _ := lavalinkClient.AddNode(ctx, disgolink.NodeConfig{
+    Name:     "node-2",
+    Address:  "lava2.example.com:2333",
+    Password: "password2",
+})
+
+// Get the best available node
+bestNode := lavalinkClient.BestNode()
+
+// Get a specific node by name
+node := lavalinkClient.Node("node-1")
+
+// Iterate over all nodes
+lavalinkClient.ForNodes(func(node disgolink.Node) {
+    log.Printf("Node: %s - Status: %s", node.Config().Name, node.Status())
+})
+```
+
+## Cleanup
+
+Always close the client when shutting down:
+
+```go
+defer lavalinkClient.Close()
+```
+
+This will:
+- Close all node connections gracefully
+- Stop all active players
+- Release associated resources
+
+<Accordion title="FAQ">
+  <AccordionItem title="What happens if Lavalink is not running?">
+    `AddNode()` will return an error if it cannot connect. The client will then attempt automatic reconnection in the background.
+  </AccordionItem>
+
+  <AccordionItem title="Can I use the same node for multiple guilds?">
+    Yes! A single node can handle players for multiple Discord guilds simultaneously. DisGoLink manages this automatically.
+  </AccordionItem>
+
+  <AccordionItem title="How do I know which node is handling a player?">
+    ```go
+    player := lavalinkClient.Player(guildID)
+    node := player.Node()
+    log.Printf("Player is on node: %s", node.Config().Name)
+    ```
+  </AccordionItem>
+
+  <AccordionItem title="Should I enable Secure mode?">
+    Set `Secure: true` when connecting to Lavalink over the internet or when using TLS/SSL. For local development, `false` is typically fine.
+  </AccordionItem>
+</Accordion>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Loading Tracks" icon="music" href="/guides/loading-tracks">
+    Learn how to search and load tracks from various sources
+  </Card>
+  <Card title="Playing Audio" icon="play" href="/guides/playing-audio">
+    Start playing audio in Discord voice channels
+  </Card>
+</CardGroup>

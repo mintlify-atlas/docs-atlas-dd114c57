@@ -1,0 +1,390 @@
+---
+title: 'Other Discord Libraries'
+description: 'Integrate DisGoLink with Arikawa, Disgord, and other Discord libraries'
+---
+
+DisGoLink can be integrated with any Go Discord library. This guide covers general integration patterns and specific notes for popular libraries.
+
+## Compatibility Overview
+
+DisGoLink requires `github.com/disgoorg/snowflake/v2.ID` types. Most Discord libraries use either:
+- **String-based IDs** (DiscordGo, Arikawa) - Require conversion
+- **uint64-based IDs** (Disgord) - May require conversion depending on version
+- **Snowflake IDs** (DisGo) - No conversion needed ✓
+
+<Warning>
+**Snowflake Type Compatibility**: You'll need to convert between your library's ID type and `snowflake.ID` (`uint64`). This is usually straightforward with `snowflake.Parse()` or `snowflake.MustParse()`.
+</Warning>
+
+## General Integration Pattern
+
+Regardless of your Discord library, you need to:
+
+1. **Install dependencies**
+2. **Create DisGoLink client** with your bot's application ID
+3. **Forward voice events** from Discord to DisGoLink
+4. **Convert ID types** between your library and DisGoLink
+5. **Manage players** through the DisGoLink API
+
+## Core Requirements
+
+### Required Intents
+
+Your Discord bot must have these gateway intents enabled:
+
+```go
+// Exact syntax depends on your library
+Guilds              // To receive guild events
+GuildVoiceStates    // CRITICAL: To receive voice events
+```
+
+### Required Event Handlers
+
+You **must** implement and register these two handlers:
+
+#### OnVoiceStateUpdate
+
+Fired when your bot joins, moves, or leaves a voice channel.
+
+```go
+func (b *Bot) onVoiceStateUpdate(event VoiceStateUpdateEvent) {
+    // Only handle events for your bot
+    if event.UserID != b.BotUserID {
+        return
+    }
+
+    // Convert your library's ID types to snowflake.ID
+    guildID := convertToSnowflake(event.GuildID)
+    
+    // ChannelID is nil when bot disconnects
+    var channelID *snowflake.ID
+    if event.ChannelID != "" {  // Or however your library represents "no channel"
+        id := convertToSnowflake(event.ChannelID)
+        channelID = &id
+    }
+
+    // Forward to DisGoLink
+    b.Lavalink.OnVoiceStateUpdate(
+        context.TODO(),
+        guildID,
+        channelID,
+        event.SessionID,  // Usually already a string
+    )
+}
+```
+
+#### OnVoiceServerUpdate
+
+Fired when Discord provides voice server connection details.
+
+```go
+func (b *Bot) onVoiceServerUpdate(event VoiceServerUpdateEvent) {
+    // Convert guild ID to snowflake
+    guildID := convertToSnowflake(event.GuildID)
+
+    // Forward to DisGoLink
+    b.Lavalink.OnVoiceServerUpdate(
+        context.TODO(),
+        guildID,
+        event.Token,
+        event.Endpoint,
+    )
+}
+```
+
+## ID Conversion Helpers
+
+### String-based IDs
+
+Most libraries (DiscordGo, Arikawa) use strings:
+
+```go
+import "github.com/disgoorg/snowflake/v2"
+
+// String to snowflake.ID
+func stringToSnowflake(id string) (snowflake.ID, error) {
+    return snowflake.Parse(id)
+}
+
+// Panic version (use only when ID is guaranteed valid)
+func mustStringToSnowflake(id string) snowflake.ID {
+    return snowflake.MustParse(id)
+}
+
+// snowflake.ID to string
+func snowflakeToString(id snowflake.ID) string {
+    return id.String()
+}
+
+// Usage example
+guildIDString := "123456789012345678"
+guildID, err := stringToSnowflake(guildIDString)
+if err != nil {
+    // Handle invalid ID
+}
+```
+
+### uint64-based IDs
+
+Some libraries use raw uint64:
+
+```go
+import "github.com/disgoorg/snowflake/v2"
+
+// uint64 to snowflake.ID (direct cast)
+func uint64ToSnowflake(id uint64) snowflake.ID {
+    return snowflake.ID(id)
+}
+
+// snowflake.ID to uint64 (direct cast)
+func snowflakeToUint64(id snowflake.ID) uint64 {
+    return uint64(id)
+}
+```
+
+## Library-Specific Examples
+
+### Arikawa
+
+Arikawa uses `discord.Snowflake` (which is a string wrapper).
+
+```go
+import (
+    "github.com/diamondburned/arikawa/v3/discord"
+    "github.com/diamondburned/arikawa/v3/state"
+    "github.com/disgoorg/snowflake/v2"
+    "github.com/disgoorg/disgolink/v3/disgolink"
+)
+
+type Bot struct {
+    State    *state.State
+    Lavalink disgolink.Client
+}
+
+// Convert Arikawa's discord.Snowflake to snowflake.ID
+func arikawaToSnowflake(id discord.Snowflake) snowflake.ID {
+    return snowflake.MustParse(id.String())
+}
+
+// Initialize
+func NewBot(token string) (*Bot, error) {
+    s := state.New("Bot " + token)
+    
+    // Add intents
+    s.AddIntents(gateway.IntentGuilds | gateway.IntentGuildVoiceStates)
+    
+    b := &Bot{
+        State: s,
+    }
+    
+    // Create DisGoLink client
+    me, _ := s.Me()
+    b.Lavalink = disgolink.New(arikawaToSnowflake(me.ID))
+    
+    // Register handlers
+    s.AddHandler(b.onVoiceStateUpdate)
+    s.AddHandler(b.onVoiceServerUpdate)
+    
+    return b, s.Open(context.TODO())
+}
+
+func (b *Bot) onVoiceStateUpdate(e *gateway.VoiceStateUpdateEvent) {
+    me, _ := b.State.Me()
+    if e.UserID != me.ID {
+        return
+    }
+    
+    var channelID *snowflake.ID
+    if e.ChannelID.IsValid() {
+        id := arikawaToSnowflake(e.ChannelID)
+        channelID = &id
+    }
+    
+    b.Lavalink.OnVoiceStateUpdate(
+        context.TODO(),
+        arikawaToSnowflake(e.GuildID),
+        channelID,
+        e.SessionID,
+    )
+}
+
+func (b *Bot) onVoiceServerUpdate(e *gateway.VoiceServerUpdateEvent) {
+    b.Lavalink.OnVoiceServerUpdate(
+        context.TODO(),
+        arikawaToSnowflake(e.GuildID),
+        e.Token,
+        e.Endpoint,
+    )
+}
+```
+
+### Disgord
+
+Disgord uses `disgord.Snowflake` (uint64 wrapper).
+
+```go
+import (
+    "github.com/andersfylling/disgord"
+    "github.com/disgoorg/snowflake/v2"
+    "github.com/disgoorg/disgolink/v3/disgolink"
+)
+
+type Bot struct {
+    Client   *disgord.Client
+    Lavalink disgolink.Client
+}
+
+// Convert Disgord's snowflake to DisGoLink's snowflake
+func disgordToSnowflake(id disgord.Snowflake) snowflake.ID {
+    return snowflake.ID(uint64(id))
+}
+
+func NewBot(token string) *Bot {
+    client := disgord.New(disgord.Config{
+        BotToken: token,
+        Intents:  disgord.IntentGuilds | disgord.IntentGuildVoiceStates,
+    })
+    
+    b := &Bot{
+        Client: client,
+    }
+    
+    // Create DisGoLink client
+    myself, _ := client.CurrentUser().Get()
+    b.Lavalink = disgolink.New(disgordToSnowflake(myself.ID))
+    
+    // Register handlers
+    client.Gateway().VoiceStateUpdate(b.onVoiceStateUpdate)
+    client.Gateway().VoiceServerUpdate(b.onVoiceServerUpdate)
+    
+    return b
+}
+
+func (b *Bot) onVoiceStateUpdate(s disgord.Session, evt *disgord.VoiceStateUpdate) {
+    myself, _ := b.Client.CurrentUser().Get()
+    if evt.UserID != myself.ID {
+        return
+    }
+    
+    var channelID *snowflake.ID
+    if !evt.ChannelID.IsZero() {
+        id := disgordToSnowflake(evt.ChannelID)
+        channelID = &id
+    }
+    
+    b.Lavalink.OnVoiceStateUpdate(
+        context.TODO(),
+        disgordToSnowflake(evt.GuildID),
+        channelID,
+        evt.SessionID,
+    )
+}
+
+func (b *Bot) onVoiceServerUpdate(s disgord.Session, evt *disgord.VoiceServerUpdate) {
+    b.Lavalink.OnVoiceServerUpdate(
+        context.TODO(),
+        disgordToSnowflake(evt.GuildID),
+        evt.Token,
+        evt.Endpoint,
+    )
+}
+```
+
+## Basic Usage Pattern
+
+Once you've set up the integration, using DisGoLink is the same regardless of your Discord library:
+
+```go
+// Create DisGoLink client
+lavalink := disgolink.New(botApplicationID)
+
+// Add Lavalink node
+node, err := lavalink.AddNode(ctx, disgolink.NodeConfig{
+    Name:     "main-node",
+    Address:  "localhost:2333",
+    Password: "youshallnotpass",
+    Secure:   false,
+})
+
+// Get or create player for a guild
+player := lavalink.Player(guildID)
+
+// Load a track
+node.LoadTracksHandler(ctx, "ytsearch:never gonna give you up",
+    disgolink.NewResultHandler(
+        func(track lavalink.Track) {
+            // Play the track
+            player.Update(ctx, lavalink.WithTrack(track))
+        },
+        func(playlist lavalink.Playlist) {
+            // Handle playlist
+        },
+        func(tracks []lavalink.Track) {
+            // Handle search results
+        },
+        func() {
+            // No matches
+        },
+        func(err error) {
+            // Error
+        },
+    ),
+)
+
+// Control playback
+player.Update(ctx, lavalink.WithPaused(true))
+player.Update(ctx, lavalink.WithVolume(80))
+player.Update(ctx, lavalink.WithPosition(lavalink.Duration(30000)))
+```
+
+## Troubleshooting
+
+### Voice Connection Not Working
+
+1. **Check intents**: Ensure `GuildVoiceStates` intent is enabled
+2. **Verify event handlers**: Both `OnVoiceStateUpdate` and `OnVoiceServerUpdate` must be registered
+3. **Check ID filtering**: Make sure you're only handling events for your bot's user ID
+4. **Validate conversions**: Ensure ID conversions don't produce invalid snowflakes
+
+### Type Conversion Errors
+
+```go
+// BAD - Can panic
+id := snowflake.MustParse(possiblyInvalidString)
+
+// GOOD - Handle errors
+id, err := snowflake.Parse(possiblyInvalidString)
+if err != nil {
+    log.Printf("Invalid ID: %v", err)
+    return
+}
+```
+
+### Common Mistakes
+
+<Warning>
+- Not filtering voice events (handling all users instead of just the bot)
+- Missing the `GuildVoiceStates` intent
+- Incorrect nil handling for `channelID` when bot disconnects
+- Not converting IDs before passing to DisGoLink
+</Warning>
+
+## Need Help?
+
+If your Discord library isn't listed here:
+
+1. Find how to listen to `VOICE_STATE_UPDATE` and `VOICE_SERVER_UPDATE` events
+2. Determine your library's ID type and create conversion functions
+3. Follow the general integration pattern above
+4. Check the [DisGo example](https://github.com/disgoorg/disgolink/tree/master/_examples/disgo) as a reference
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Player Guide" icon="circle-play" href="/guides/playing-audio">
+    Learn about player management and controls
+  </Card>
+  <Card title="Track Loading" icon="music" href="/guides/loading-tracks">
+    Load tracks from various sources
+  </Card>
+</CardGroup>

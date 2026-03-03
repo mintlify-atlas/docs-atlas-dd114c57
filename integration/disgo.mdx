@@ -1,0 +1,278 @@
+---
+title: 'DisGo Integration'
+description: 'Integrate DisGoLink with the DisGo Discord library'
+---
+
+DisGo is the **recommended Discord library** for use with DisGoLink. Both libraries are built by the same team and share the same `snowflake` package, making integration seamless.
+
+## Why DisGo?
+
+- **Native compatibility**: Uses `github.com/disgoorg/snowflake/v2` (same as DisGoLink)
+- **Type-safe**: No conversions needed between library types
+- **Built together**: Designed to work seamlessly with DisGoLink
+- **Modern API**: Clean, idiomatic Go code
+
+## Installation
+
+```bash
+go get github.com/disgoorg/disgo
+go get github.com/disgoorg/disgolink/v3
+```
+
+## Basic Setup
+
+Here's a complete example showing how to integrate DisGoLink with DisGo:
+
+```go
+package main
+
+import (
+    "context"
+    "log/slog"
+    "os"
+    "time"
+
+    "github.com/disgoorg/disgo"
+    "github.com/disgoorg/disgo/bot"
+    "github.com/disgoorg/disgo/cache"
+    "github.com/disgoorg/disgo/gateway"
+    "github.com/disgoorg/snowflake/v2"
+    "github.com/disgoorg/disgolink/v3/disgolink"
+)
+
+type Bot struct {
+    Client   bot.Client
+    Lavalink disgolink.Client
+}
+
+func main() {
+    b := &Bot{}
+
+    // Create DisGo client with required intents and cache
+    client, err := disgo.New(os.Getenv("TOKEN"),
+        bot.WithGatewayConfigOpts(
+            gateway.WithIntents(gateway.IntentGuilds, gateway.IntentGuildVoiceStates),
+        ),
+        bot.WithCacheConfigOpts(
+            cache.WithCaches(cache.FlagVoiceStates),
+        ),
+        bot.WithEventListenerFunc(b.onVoiceStateUpdate),
+        bot.WithEventListenerFunc(b.onVoiceServerUpdate),
+    )
+    if err != nil {
+        slog.Error("error while building disgo client", slog.Any("err", err))
+        os.Exit(1)
+    }
+    b.Client = client
+
+    // Create DisGoLink client
+    b.Lavalink = disgolink.New(client.ApplicationID())
+
+    // Open gateway connection
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+    if err = client.OpenGateway(ctx); err != nil {
+        slog.Error("failed to open gateway", slog.Any("err", err))
+        os.Exit(1)
+    }
+    defer client.Close(context.TODO())
+
+    // Add Lavalink node
+    node, err := b.Lavalink.AddNode(ctx, disgolink.NodeConfig{
+        Name:     "main-node",
+        Address:  "localhost:2333",
+        Password: "youshallnotpass",
+        Secure:   false,
+    })
+    if err != nil {
+        slog.Error("failed to add node", slog.Any("err", err))
+        os.Exit(1)
+    }
+
+    slog.Info("Bot is ready!", slog.String("session_id", node.SessionID()))
+}
+```
+
+## Voice Event Forwarding
+
+<Warning>
+**Critical**: You must forward voice state and server updates to DisGoLink for audio to work.
+</Warning>
+
+DisGoLink needs to receive voice events from Discord to establish and maintain voice connections. Register these event handlers:
+
+### OnVoiceStateUpdate
+
+This event fires when the bot joins, leaves, or moves between voice channels.
+
+```go
+func (b *Bot) onVoiceStateUpdate(event *events.GuildVoiceStateUpdate) {
+    // Only handle events for our bot
+    if event.VoiceState.UserID != b.Client.ApplicationID() {
+        return
+    }
+
+    // Forward to DisGoLink
+    b.Lavalink.OnVoiceStateUpdate(
+        context.TODO(),
+        event.VoiceState.GuildID,
+        event.VoiceState.ChannelID,  // *snowflake.ID (nil when disconnected)
+        event.VoiceState.SessionID,
+    )
+
+    // Optional: Clean up when bot leaves voice
+    if event.VoiceState.ChannelID == nil {
+        // Bot disconnected from voice
+        // Clean up queues, players, etc.
+    }
+}
+```
+
+### OnVoiceServerUpdate
+
+This event provides the voice server endpoint and token needed for the connection.
+
+```go
+func (b *Bot) onVoiceServerUpdate(event *events.VoiceServerUpdate) {
+    // Forward to DisGoLink
+    b.Lavalink.OnVoiceServerUpdate(
+        context.TODO(),
+        event.GuildID,
+        event.Token,
+        *event.Endpoint,  // String containing voice server URL
+    )
+}
+```
+
+## Player Management
+
+### Creating and Using Players
+
+```go
+func (b *Bot) playTrack(guildID snowflake.ID, channelID *snowflake.ID) error {
+    // Connect to voice channel
+    if err := b.Client.UpdateVoiceState(context.TODO(), guildID, channelID, false, false); err != nil {
+        return err
+    }
+
+    // Get or create player
+    player := b.Lavalink.Player(guildID)
+
+    // Load and play track
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+
+    return b.Lavalink.BestNode().LoadTracksHandler(ctx, "ytsearch:rick astley never gonna give you up",
+        disgolink.NewResultHandler(
+            func(track lavalink.Track) {
+                // Play the track
+                player.Update(context.TODO(), lavalink.WithTrack(track))
+            },
+            func(playlist lavalink.Playlist) {
+                // Play first track from playlist
+                player.Update(context.TODO(), lavalink.WithTrack(playlist.Tracks[0]))
+            },
+            func(tracks []lavalink.Track) {
+                // Play first search result
+                player.Update(context.TODO(), lavalink.WithTrack(tracks[0]))
+            },
+            func() {
+                // No matches found
+            },
+            func(err error) {
+                // Error loading track
+            },
+        ),
+    )
+}
+```
+
+### Listening to Player Events
+
+Register event listeners when creating the DisGoLink client:
+
+```go
+b.Lavalink = disgolink.New(client.ApplicationID(),
+    disgolink.WithListenerFunc(b.onTrackStart),
+    disgolink.WithListenerFunc(b.onTrackEnd),
+    disgolink.WithListenerFunc(b.onTrackException),
+    disgolink.WithListenerFunc(b.onTrackStuck),
+    disgolink.WithListenerFunc(b.onPlayerPause),
+    disgolink.WithListenerFunc(b.onPlayerResume),
+    disgolink.WithListenerFunc(b.onWebSocketClosed),
+)
+```
+
+Implement the event handlers:
+
+```go
+func (b *Bot) onTrackStart(player disgolink.Player, event lavalink.TrackStartEvent) {
+    slog.Info("track started",
+        slog.String("title", event.Track.Info.Title),
+        slog.String("guild", event.GuildID().String()),
+    )
+}
+
+func (b *Bot) onTrackEnd(player disgolink.Player, event lavalink.TrackEndEvent) {
+    // Check if we should play next track
+    if !event.Reason.MayStartNext() {
+        return
+    }
+
+    // Load next track from queue
+    // Implementation depends on your queue system
+}
+
+func (b *Bot) onTrackException(player disgolink.Player, event lavalink.TrackExceptionEvent) {
+    slog.Error("track exception",
+        slog.String("message", event.Exception.Message),
+        slog.String("severity", string(event.Exception.Severity)),
+    )
+}
+
+func (b *Bot) onWebSocketClosed(player disgolink.Player, event lavalink.WebSocketClosedEvent) {
+    slog.Warn("voice websocket closed",
+        slog.Int("code", event.Code),
+        slog.String("reason", event.Reason),
+        slog.Bool("by_remote", event.ByRemote),
+    )
+}
+```
+
+## Player Controls
+
+```go
+// Pause/Resume
+player.Update(context.TODO(), lavalink.WithPaused(true))
+
+// Change volume (0-1000)
+player.Update(context.TODO(), lavalink.WithVolume(80))
+
+// Seek to position
+player.Update(context.TODO(), lavalink.WithPosition(lavalink.Duration(30000))) // 30 seconds
+
+// Stop playback
+player.Update(context.TODO(), lavalink.WithNullTrack())
+
+// Apply filters
+filters := player.Filters()
+filters.Volume = lavalink.Ptr(0.5)
+player.Update(context.TODO(), lavalink.WithFilters(filters))
+```
+
+## Complete Example
+
+Check out the full working example with commands, queue management, and all features:
+
+[View DisGo Example on GitHub](https://github.com/disgoorg/disgolink/tree/master/_examples/disgo)
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Player Guide" icon="circle-play" href="/guides/playing-audio">
+    Learn about player management and controls
+  </Card>
+  <Card title="Track Loading" icon="music" href="/guides/loading-tracks">
+    Load tracks from various sources
+  </Card>
+</CardGroup>

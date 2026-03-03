@@ -1,80 +1,494 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Build your first Discord music bot with DisGoLink in minutes
 ---
 
-## Get started in three steps
+# Quickstart Guide
 
-Get your documentation site running locally and make your first customization.
-
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+This guide will walk you through creating a functional Discord music bot using DisGoLink and DisGo. By the end, you'll have a bot that can join voice channels and play music from YouTube.
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+This guide uses DisGo as the Discord library. If you're using DiscordGo or another library, the voice event handling will be slightly different, but the DisGoLink API remains the same.
 </Note>
+
+## Complete Working Example
+
+<Steps>
+
+<Step title="Import Required Packages">
+
+Start by importing DisGoLink and your Discord library:
+
+```go
+import (
+    "context"
+    "log/slog"
+    
+    "github.com/disgoorg/disgo"
+    "github.com/disgoorg/disgo/bot"
+    "github.com/disgoorg/disgo/events"
+    "github.com/disgoorg/disgo/gateway"
+    "github.com/disgoorg/snowflake/v2"
+    
+    "github.com/disgoorg/disgolink/v3/disgolink"
+    "github.com/disgoorg/disgolink/v3/lavalink"
+)
+```
+
+</Step>
+
+<Step title="Create the Lavalink Client">
+
+Create a DisGoLink client with your bot's user ID:
+
+```go
+var userID = snowflake.ID(1234567890)
+
+lavalinkClient := disgolink.New(userID,
+    disgolink.WithListenerFunc(onPlayerUpdate),
+    disgolink.WithListenerFunc(onPlayerPause),
+    disgolink.WithListenerFunc(onPlayerResume),
+    disgolink.WithListenerFunc(onTrackStart),
+    disgolink.WithListenerFunc(onTrackEnd),
+    disgolink.WithListenerFunc(onTrackException),
+    disgolink.WithListenerFunc(onTrackStuck),
+    disgolink.WithListenerFunc(onWebSocketClosed),
+)
+```
+
+The user ID should be your bot's Discord application ID, which you can get from `client.ApplicationID()` after creating your Discord client.
+
+</Step>
+
+<Step title="Forward Voice Events">
+
+DisGoLink needs to receive voice state and voice server updates from Discord. Set up event handlers to forward these events:
+
+```go
+client, err := disgo.New(token,
+    bot.WithGatewayConfigOpts(
+        gateway.WithIntents(gateway.IntentGuilds, gateway.IntentGuildVoiceStates),
+    ),
+    bot.WithEventListenerFunc(onVoiceStateUpdate),
+    bot.WithEventListenerFunc(onVoiceServerUpdate),
+)
+
+func onVoiceStateUpdate(event *events.GuildVoiceStateUpdate) {
+    // Filter all non-bot voice state updates
+    if event.VoiceState.UserID != client.ApplicationID() {
+        return
+    }
+    lavalinkClient.OnVoiceStateUpdate(
+        context.TODO(),
+        event.VoiceState.GuildID,
+        event.VoiceState.ChannelID,
+        event.VoiceState.SessionID,
+    )
+}
+
+func onVoiceServerUpdate(event *events.VoiceServerUpdate) {
+    lavalinkClient.OnVoiceServerUpdate(
+        context.TODO(),
+        event.GuildID,
+        event.Token,
+        *event.Endpoint,
+    )
+}
+```
+
+<Warning>
+Make sure to filter voice state updates to only your bot's updates, otherwise you'll forward events for all users!
+</Warning>
+
+</Step>
+
+<Step title="Add a Lavalink Node">
+
+Connect to your Lavalink server by adding a node:
+
+```go
+node, err := lavalinkClient.AddNode(context.TODO(), disgolink.NodeConfig{
+    Name:      "test",           // A unique node name
+    Address:   "localhost:2333", // Lavalink server address
+    Password:  "youshallnotpass", // Lavalink server password
+    Secure:    false,            // Use 'false' for ws://, 'true' for wss://
+    SessionID: "",               // Optional: resume a previous session
+})
+if err != nil {
+    log.Fatal("Failed to add node:", err)
+}
+```
+
+<Info>
+The `AddNode` method is a blocking call that connects to the Lavalink server. Make sure your Lavalink server is running before calling this.
+</Info>
+
+</Step>
+
+<Step title="Load a Track">
+
+Before playing audio, you need to resolve tracks using Lavalink's search or URL loading:
+
+```go
+query := "ytsearch:Rick Astley - Never Gonna Give You Up"
+
+var toPlay *lavalink.Track
+lavalinkClient.BestNode().LoadTracksHandler(context.TODO(), query, disgolink.NewResultHandler(
+    func(track lavalink.Track) {
+        // Loaded a single track (from URL)
+        toPlay = &track
+        log.Println("Loaded track:", track.Info.Title)
+    },
+    func(playlist lavalink.Playlist) {
+        // Loaded a playlist
+        log.Println("Loaded playlist:", playlist.Info.Name)
+        if len(playlist.Tracks) > 0 {
+            toPlay = &playlist.Tracks[0]
+        }
+    },
+    func(tracks []lavalink.Track) {
+        // Loaded search results
+        log.Println("Found", len(tracks), "tracks")
+        if len(tracks) > 0 {
+            toPlay = &tracks[0]
+        }
+    },
+    func() {
+        // No matches found
+        log.Println("No matches found for query:", query)
+    },
+    func(err error) {
+        // Error loading tracks
+        log.Println("Error loading tracks:", err)
+    },
+))
+```
+
+Supported query formats:
+- `ytsearch:query` - Search YouTube
+- `ytmsearch:query` - Search YouTube Music
+- `scsearch:query` - Search SoundCloud
+- Direct URLs from supported platforms
+
+</Step>
+
+<Step title="Join Voice Channel and Play">
+
+Connect to a voice channel and start playback:
+
+```go
+// Join the voice channel (DisGo)
+err := client.UpdateVoiceState(context.TODO(), guildID, channelID, false, false)
+if err != nil {
+    log.Fatal("Failed to join voice channel:", err)
+}
+
+// Get or create a player for this guild
+player := lavalinkClient.Player(guildID)
+
+// Play the track
+err = player.Update(context.TODO(), lavalink.WithTrack(*toPlay))
+if err != nil {
+    log.Fatal("Failed to play track:", err)
+}
+```
+
+For other Discord libraries:
+
+<CodeGroup>
+
+```go DisGo
+err := client.UpdateVoiceState(context.TODO(), guildID, channelID, false, false)
+```
+
+```go DiscordGo
+err := session.ChannelVoiceJoinManual(guildID, channelID, false, false)
+```
+
+</CodeGroup>
+
+</Step>
+
+<Step title="Implement Event Handlers">
+
+React to player events to implement features like auto-play, queue management, and error handling:
+
+```go
+func onTrackStart(player disgolink.Player, event lavalink.TrackStartEvent) {
+    log.Printf("Track started: %s\n", event.Track.Info.Title)
+}
+
+func onTrackEnd(player disgolink.Player, event lavalink.TrackEndEvent) {
+    log.Printf("Track ended: %s (reason: %s)\n", event.Track.Info.Title, event.Reason)
+    
+    // If track finished normally, you might want to play the next track
+    if event.Reason == lavalink.TrackEndReasonFinished {
+        // Play next track from queue
+    }
+}
+
+func onTrackException(player disgolink.Player, event lavalink.TrackExceptionEvent) {
+    log.Printf("Track exception: %s - %s\n", event.Exception.Message, event.Exception.Cause)
+}
+
+func onTrackStuck(player disgolink.Player, event lavalink.TrackStuckEvent) {
+    log.Printf("Track stuck: threshold %dms\n", event.ThresholdMs)
+}
+
+func onPlayerUpdate(player disgolink.Player, event lavalink.PlayerUpdateMessage) {
+    // Periodic updates with player state (default: every 5 seconds)
+    log.Printf("Position: %s\n", event.State.Position)
+}
+
+func onPlayerPause(player disgolink.Player, event lavalink.PlayerPauseEvent) {
+    log.Println("Player paused")
+}
+
+func onPlayerResume(player disgolink.Player, event lavalink.PlayerResumeEvent) {
+    log.Println("Player resumed")
+}
+
+func onWebSocketClosed(player disgolink.Player, event lavalink.WebSocketClosedEvent) {
+    log.Printf("WebSocket closed: code=%d, reason=%s, byRemote=%v\n",
+        event.Code, event.Reason, event.ByRemote)
+}
+```
+
+</Step>
+
+</Steps>
+
+## Full Example Code
+
+Here's a complete minimal bot based on the DisGo example from the source:
+
+```go main.go
+package main
+
+import (
+    "context"
+    "log"
+    "log/slog"
+    "os"
+    "os/signal"
+    "syscall"
+    "time"
+
+    "github.com/disgoorg/disgo"
+    "github.com/disgoorg/disgo/bot"
+    "github.com/disgoorg/disgo/events"
+    "github.com/disgoorg/disgo/gateway"
+    "github.com/disgoorg/disgo/cache"
+    "github.com/disgoorg/snowflake/v2"
+
+    "github.com/disgoorg/disgolink/v3/disgolink"
+    "github.com/disgoorg/disgolink/v3/lavalink"
+)
+
+var (
+    token        = os.Getenv("DISCORD_TOKEN")
+    lavalinkAddr = os.Getenv("LAVALINK_ADDRESS") // e.g., "localhost:2333"
+    lavalinkPass = os.Getenv("LAVALINK_PASSWORD")
+)
+
+var lavalinkClient disgolink.Client
+
+func main() {
+    slog.Info("Starting DisGoLink bot...")
+
+    // Create Discord client
+    client, err := disgo.New(token,
+        bot.WithGatewayConfigOpts(
+            gateway.WithIntents(gateway.IntentGuilds, gateway.IntentGuildVoiceStates),
+        ),
+        bot.WithCacheConfigOpts(
+            cache.WithCaches(cache.FlagVoiceStates),
+        ),
+        bot.WithEventListenerFunc(onVoiceStateUpdate),
+        bot.WithEventListenerFunc(onVoiceServerUpdate),
+    )
+    if err != nil {
+        log.Fatal("Failed to create Discord client:", err)
+    }
+
+    // Create Lavalink client
+    lavalinkClient = disgolink.New(client.ApplicationID(),
+        disgolink.WithListenerFunc(onTrackStart),
+        disgolink.WithListenerFunc(onTrackEnd),
+        disgolink.WithListenerFunc(onTrackException),
+    )
+
+    // Connect to Discord
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+    if err = client.OpenGateway(ctx); err != nil {
+        log.Fatal("Failed to connect to Discord:", err)
+    }
+    defer client.Close(context.TODO())
+
+    // Add Lavalink node
+    _, err = lavalinkClient.AddNode(ctx, disgolink.NodeConfig{
+        Name:     "main",
+        Address:  lavalinkAddr,
+        Password: lavalinkPass,
+        Secure:   false,
+    })
+    if err != nil {
+        log.Fatal("Failed to add Lavalink node:", err)
+    }
+
+    slog.Info("Bot is running. Press Ctrl+C to exit.")
+
+    // Wait for interrupt signal
+    s := make(chan os.Signal, 1)
+    signal.Notify(s, syscall.SIGINT, syscall.SIGTERM)
+    <-s
+}
+
+func onVoiceStateUpdate(event *events.GuildVoiceStateUpdate) {
+    if event.VoiceState.UserID != event.Bot().ApplicationID() {
+        return
+    }
+    lavalinkClient.OnVoiceStateUpdate(
+        context.TODO(),
+        event.VoiceState.GuildID,
+        event.VoiceState.ChannelID,
+        event.VoiceState.SessionID,
+    )
+}
+
+func onVoiceServerUpdate(event *events.VoiceServerUpdate) {
+    lavalinkClient.OnVoiceServerUpdate(
+        context.TODO(),
+        event.GuildID,
+        event.Token,
+        *event.Endpoint,
+    )
+}
+
+func onTrackStart(player disgolink.Player, event lavalink.TrackStartEvent) {
+    slog.Info("Track started", "title", event.Track.Info.Title)
+}
+
+func onTrackEnd(player disgolink.Player, event lavalink.TrackEndEvent) {
+    slog.Info("Track ended", "title", event.Track.Info.Title, "reason", event.Reason)
+}
+
+func onTrackException(player disgolink.Player, event lavalink.TrackExceptionEvent) {
+    slog.Error("Track exception", "error", event.Exception.Message)
+}
+```
+
+## Player Control
+
+Once you have a player, you can control it with various options:
+
+<CodeGroup>
+
+```go Pause/Resume
+// Pause playback
+err := player.Update(context.TODO(), lavalink.WithPaused(true))
+
+// Resume playback
+err = player.Update(context.TODO(), lavalink.WithPaused(false))
+```
+
+```go Volume Control
+// Set volume (0-1000, default 100)
+err := player.Update(context.TODO(), lavalink.WithVolume(75))
+```
+
+```go Seek Position
+// Seek to 30 seconds
+err := player.Update(context.TODO(), lavalink.WithPosition(lavalink.Duration(30000)))
+```
+
+```go Apply Filters
+// Apply bass boost filter
+filters := lavalink.Filters{
+    Equalizer: []lavalink.EqualizerBand{
+        {Band: 0, Gain: 0.2},
+        {Band: 1, Gain: 0.15},
+    },
+}
+err := player.Update(context.TODO(), lavalink.WithFilters(filters))
+```
+
+</CodeGroup>
+
+## Troubleshooting
+
+### Bot Joins But No Audio Plays
+
+- Verify your Lavalink server is running and accessible
+- Check that you're forwarding voice events correctly
+- Ensure the track loaded successfully before calling `Update`
+- Check Lavalink server logs for errors
+
+### "No Available Nodes" Error
+
+This means `BestNode()` returned nil. Ensure:
+- You've called `AddNode` successfully
+- The node connection didn't fail
+- You're calling `AddNode` before trying to load tracks
+
+### Type Conversion Errors with Other Libraries
+
+If using DiscordGo or other libraries:
+
+```go
+// Convert string to Snowflake
+guildID := snowflake.MustParse(guildIDString)
+
+// Convert Snowflake to string
+guildIDString := guildID.String()
+```
+
+### Track Won't Load
+
+- Ensure your query format is correct (e.g., `ytsearch:query`)
+- Check if the source is enabled in your Lavalink configuration
+- Verify the URL is from a supported platform
+- Check Lavalink server logs for source-specific errors
+
+## Next Steps
+
+You now have a working Discord music bot! Here are some ideas to expand it:
+
+- Implement a queue system for multiple tracks
+- Add slash commands for play, pause, skip, and volume control
+- Create playlist support
+- Add audio filters and effects
+- Implement session resuming for bot restarts
+- Integrate plugins for additional features
+
+<CardGroup cols={2}>
+  <Card
+    title="Full Examples"
+    icon="github"
+    href="https://github.com/disgoorg/disgolink/tree/v3/_examples"
+  >
+    Explore complete example bots with DisGo and DiscordGo
+  </Card>
+  <Card
+    title="API Reference"
+    icon="book"
+    href="https://pkg.go.dev/github.com/disgoorg/disgolink/v3"
+  >
+    Deep dive into the full DisGoLink API
+  </Card>
+  <Card
+    title="Get Help"
+    icon="discord"
+    href="https://discord.gg/NFmvZYmZMF"
+  >
+    Join the Discord server for support
+  </Card>
+  <Card
+    title="Plugin System"
+    icon="puzzle-piece"
+    href="https://github.com/disgoorg/disgolink/blob/v3/disgolink/plugin.go"
+  >
+    Learn how to extend DisGoLink with plugins
+  </Card>
+</CardGroup>

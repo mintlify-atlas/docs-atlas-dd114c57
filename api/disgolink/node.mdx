@@ -1,0 +1,364 @@
+---
+title: Node
+description: Interface for managing individual Lavalink node connections
+---
+
+## Node Interface
+
+The `Node` interface represents a connection to a Lavalink server and provides methods for managing tracks, sessions, and stats.
+
+## NodeConfig Struct
+
+Configuration for connecting to a Lavalink node.
+
+<ParamField path="Name" type="string" required>
+  Unique identifier for the node
+</ParamField>
+
+<ParamField path="Address" type="string" required>
+  Host and port of the Lavalink server (e.g., "localhost:2333")
+</ParamField>
+
+<ParamField path="Password" type="string" required>
+  Password for authenticating with the Lavalink server
+</ParamField>
+
+<ParamField path="Secure" type="bool">
+  Whether to use secure connections (https/wss). Default: false
+</ParamField>
+
+<ParamField path="SessionID" type="string">
+  Optional session ID for resuming previous sessions
+</ParamField>
+
+**Example:**
+```go
+config := disgolink.NodeConfig{
+    Name:     "primary",
+    Address:  "lavalink.example.com:443",
+    Password: "youshallnotpass",
+    Secure:   true,
+}
+```
+
+## Status Constants
+
+Node connection status values:
+
+- `StatusConnecting` - Currently establishing connection
+- `StatusConnected` - Successfully connected
+- `StatusReconnecting` - Attempting to reconnect
+- `StatusDisconnected` - Not connected
+
+```go
+type Status string
+
+const (
+    StatusConnecting   Status = "CONNECTING"
+    StatusConnected    Status = "CONNECTED"
+    StatusReconnecting Status = "RECONNECTING"
+    StatusDisconnected Status = "DISCONNECTED"
+)
+```
+
+## Node Methods
+
+### Lavalink
+
+Returns the parent client instance.
+
+<ResponseField name="Client" type="Client">
+  The client that owns this node
+</ResponseField>
+
+```go
+Lavalink() Client
+```
+
+### Config
+
+Returns the node's configuration.
+
+<ResponseField name="NodeConfig" type="NodeConfig">
+  The configuration used to create this node
+</ResponseField>
+
+```go
+Config() NodeConfig
+```
+
+### Rest
+
+Returns the REST client for this node.
+
+<ResponseField name="RestClient" type="RestClient">
+  The REST client for making HTTP requests
+</ResponseField>
+
+```go
+Rest() RestClient
+```
+
+### Stats
+
+Returns the current node statistics.
+
+<ResponseField name="Stats" type="lavalink.Stats">
+  Current statistics including CPU, memory, and player counts
+</ResponseField>
+
+```go
+Stats() lavalink.Stats
+```
+
+### Status
+
+Returns the current connection status.
+
+<ResponseField name="Status" type="Status">
+  The node's connection status
+</ResponseField>
+
+```go
+Status() Status
+```
+
+### SessionID
+
+Returns the current session ID.
+
+<ResponseField name="string" type="string">
+  The active session ID
+</ResponseField>
+
+```go
+SessionID() string
+```
+
+## Information Methods
+
+### Version
+
+Retrieves the Lavalink server version.
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for the request
+</ParamField>
+
+<ResponseField name="string" type="string">
+  The Lavalink version string
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Error if the request fails
+</ResponseField>
+
+```go
+Version(ctx context.Context) (string, error)
+```
+
+### Info
+
+Retrieves detailed server information including plugins and source managers.
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for the request
+</ParamField>
+
+<ResponseField name="Info" type="*lavalink.Info">
+  Server information including version, plugins, and source managers
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Error if the request fails
+</ResponseField>
+
+```go
+Info(ctx context.Context) (*lavalink.Info, error)
+```
+
+## Session Management
+
+### Update
+
+Updates session settings.
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for the request
+</ParamField>
+
+<ParamField path="update" type="lavalink.SessionUpdate" required>
+  Session update parameters (resuming, timeout)
+</ParamField>
+
+<ResponseField name="error" type="error">
+  Error if the update fails
+</ResponseField>
+
+```go
+Update(ctx context.Context, update lavalink.SessionUpdate) error
+```
+
+**Example:**
+```go
+err := node.Update(ctx, lavalink.SessionUpdate{
+    Resuming: true,
+    Timeout:  60,
+})
+```
+
+## Track Loading
+
+### LoadTracks
+
+Loads tracks from an identifier (URL or search query).
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for the request
+</ParamField>
+
+<ParamField path="identifier" type="string" required>
+  URL or search query (e.g., "ytsearch:Never Gonna Give You Up")
+</ParamField>
+
+<ResponseField name="LoadResult" type="*lavalink.LoadResult">
+  Load result containing tracks, playlists, or errors
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Error if the request fails
+</ResponseField>
+
+```go
+LoadTracks(ctx context.Context, identifier string) (*lavalink.LoadResult, error)
+```
+
+### LoadTracksHandler
+
+Loads tracks and invokes callbacks based on the result type.
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for the request
+</ParamField>
+
+<ParamField path="identifier" type="string" required>
+  URL or search query
+</ParamField>
+
+<ParamField path="handler" type="AudioLoadResultHandler" required>
+  Handler with callbacks for different result types
+</ParamField>
+
+```go
+LoadTracksHandler(ctx context.Context, identifier string, handler AudioLoadResultHandler)
+```
+
+**Example:**
+```go
+handler := disgolink.NewResultHandler(
+    func(track lavalink.Track) {
+        fmt.Printf("Loaded track: %s\n", track.Info.Title)
+    },
+    func(playlist lavalink.Playlist) {
+        fmt.Printf("Loaded playlist: %s\n", playlist.Info.Name)
+    },
+    func(tracks []lavalink.Track) {
+        fmt.Printf("Search returned %d tracks\n", len(tracks))
+    },
+    func() {
+        fmt.Println("No matches found")
+    },
+    func(err error) {
+        fmt.Printf("Load failed: %v\n", err)
+    },
+)
+node.LoadTracksHandler(ctx, "ytsearch:Never Gonna Give You Up", handler)
+```
+
+## Track Decoding
+
+### DecodeTrack
+
+Decodes a base64-encoded track string.
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for the request
+</ParamField>
+
+<ParamField path="encodedTrack" type="string" required>
+  Base64-encoded track data
+</ParamField>
+
+<ResponseField name="Track" type="*lavalink.Track">
+  The decoded track
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Error if decoding fails
+</ResponseField>
+
+```go
+DecodeTrack(ctx context.Context, encodedTrack string) (*lavalink.Track, error)
+```
+
+### DecodeTracks
+
+Decodes multiple base64-encoded tracks.
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for the request
+</ParamField>
+
+<ParamField path="encodedTracks" type="[]string" required>
+  Array of base64-encoded track data
+</ParamField>
+
+<ResponseField name="[]Track" type="[]lavalink.Track">
+  The decoded tracks
+</ResponseField>
+
+<ResponseField name="error" type="error">
+  Error if decoding fails
+</ResponseField>
+
+```go
+DecodeTracks(ctx context.Context, encodedTracks []string) ([]lavalink.Track, error)
+```
+
+## Connection Management
+
+### Open
+
+Opens the WebSocket connection to the Lavalink server.
+
+<ParamField path="ctx" type="context.Context" required>
+  Context for the connection attempt
+</ParamField>
+
+<ResponseField name="error" type="error">
+  Error if connection fails
+</ResponseField>
+
+```go
+Open(ctx context.Context) error
+```
+
+<Note>
+  This method is automatically called by `Client.AddNode()`. You typically don't need to call it manually.
+</Note>
+
+### Close
+
+Closes the WebSocket connection.
+
+```go
+Close()
+```
+
+## Errors
+
+```go
+var ErrNodeAlreadyConnected = errors.New("node already connected")
+```
+
+Returned when attempting to open a node that is already connected.

@@ -1,0 +1,428 @@
+---
+title: Tracks
+description: Loading and managing audio tracks
+---
+
+Tracks represent audio sources that can be played through Lavalink. The `Track` structure is part of the `lavalink` package and contains all information about an audio track.
+
+## Track Structure
+
+```go
+type Track struct {
+    Encoded    string    `json:"encoded"`
+    Info       TrackInfo `json:"info"`
+    PluginInfo RawData   `json:"pluginInfo"`
+    UserData   RawData   `json:"userData"`
+}
+```
+
+<ParamField path="Encoded" type="string">
+  Base64-encoded track data used by Lavalink to identify and play the track
+</ParamField>
+
+<ParamField path="Info" type="TrackInfo">
+  Human-readable track information (title, author, duration, etc.)
+</ParamField>
+
+<ParamField path="PluginInfo" type="RawData">
+  Additional data provided by Lavalink plugins (JSON)
+</ParamField>
+
+<ParamField path="UserData" type="RawData">
+  Custom data you can attach to tracks (JSON)
+</ParamField>
+
+## Track Information
+
+The `TrackInfo` structure contains metadata about the track:
+
+```go
+type TrackInfo struct {
+    Identifier string   `json:"identifier"`
+    Author     string   `json:"author"`
+    Length     Duration `json:"length"`
+    IsStream   bool     `json:"isStream"`
+    Title      string   `json:"title"`
+    URI        *string  `json:"uri"`
+    SourceName string   `json:"sourceName"`
+    Position   Duration `json:"position"`
+    ArtworkURL *string  `json:"artworkUrl"`
+    ISRC       *string  `json:"isrc"`
+}
+```
+
+<ParamField path="Identifier" type="string">
+  Source-specific track identifier (e.g., YouTube video ID)
+</ParamField>
+
+<ParamField path="Title" type="string">
+  Track title
+</ParamField>
+
+<ParamField path="Author" type="string">
+  Track author/artist name
+</ParamField>
+
+<ParamField path="Length" type="Duration">
+  Track duration in milliseconds (0 for streams)
+</ParamField>
+
+<ParamField path="IsStream" type="bool">
+  Whether this is a live stream
+</ParamField>
+
+<ParamField path="URI" type="*string">
+  Full URI to the track (may be nil)
+</ParamField>
+
+<ParamField path="SourceName" type="string">
+  Source manager name (e.g., "youtube", "soundcloud", "http")
+</ParamField>
+
+<ParamField path="Position" type="Duration">
+  Start position in milliseconds (usually 0)
+</ParamField>
+
+<ParamField path="ArtworkURL" type="*string">
+  URL to track artwork/thumbnail (may be nil)
+</ParamField>
+
+<ParamField path="ISRC" type="*string">
+  International Standard Recording Code (may be nil)
+</ParamField>
+
+### Example
+
+```go
+track := result.Data.(lavalink.Track)
+info := track.Info
+
+fmt.Printf("Title: %s\n", info.Title)
+fmt.Printf("Author: %s\n", info.Author)
+fmt.Printf("Duration: %dms\n", info.Length)
+fmt.Printf("Source: %s\n", info.SourceName)
+
+if info.ArtworkURL != nil {
+    fmt.Printf("Artwork: %s\n", *info.ArtworkURL)
+}
+
+if info.IsStream {
+    fmt.Println("This is a live stream")
+}
+```
+
+## Loading Tracks
+
+### By URL
+
+Load tracks directly from URLs:
+
+```go
+result, err := node.LoadTracks(ctx, "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+if err != nil {
+    return err
+}
+```
+
+Supported sources depend on your Lavalink configuration but typically include:
+- YouTube
+- SoundCloud
+- Bandcamp
+- Vimeo
+- Twitch
+- HTTP streams
+
+### By Search Query
+
+Search for tracks using search prefixes:
+
+```go
+// YouTube search
+result, err := node.LoadTracks(ctx, "ytsearch:never gonna give you up")
+
+// YouTube Music search
+result, err := node.LoadTracks(ctx, "ytmsearch:lofi hip hop")
+
+// SoundCloud search
+result, err := node.LoadTracks(ctx, "scsearch:piano")
+```
+
+<ParamField path="ytsearch" type="string">
+  Search YouTube and return up to 5 results
+</ParamField>
+
+<ParamField path="ytmsearch" type="string">
+  Search YouTube Music and return up to 5 results
+</ParamField>
+
+<ParamField path="scsearch" type="string">
+  Search SoundCloud and return up to 5 results
+</ParamField>
+
+<Info>
+Search queries return a `Search` result containing multiple tracks. The exact number of results depends on the source.
+</Info>
+
+## Load Result Types
+
+Track loading returns a `LoadResult` with one of five possible data types:
+
+### Track (Single)
+
+A single track was found:
+
+```go
+result, err := node.LoadTracks(ctx, "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+if result.LoadType == lavalink.LoadTypeTrack {
+    track := result.Data.(lavalink.Track)
+    fmt.Println("Loaded:", track.Info.Title)
+}
+```
+
+<ParamField path="LoadTypeTrack" type="LoadType">
+  A single track was successfully loaded
+  
+  **Data Type**: `lavalink.Track`
+</ParamField>
+
+### Playlist
+
+A playlist was found:
+
+```go
+result, err := node.LoadTracks(ctx, "https://www.youtube.com/playlist?list=...")
+if result.LoadType == lavalink.LoadTypePlaylist {
+    playlist := result.Data.(lavalink.Playlist)
+    fmt.Printf("Playlist: %s (%d tracks)\n", playlist.Info.Name, len(playlist.Tracks))
+    
+    // Get selected track (if any)
+    if playlist.Info.SelectedTrack >= 0 {
+        selected := playlist.Tracks[playlist.Info.SelectedTrack]
+        fmt.Println("Selected:", selected.Info.Title)
+    }
+}
+```
+
+<ParamField path="LoadTypePlaylist" type="LoadType">
+  A playlist was successfully loaded
+  
+  **Data Type**: `lavalink.Playlist`
+  
+  **Playlist Structure**:
+  - `Info.Name`: Playlist name
+  - `Info.SelectedTrack`: Index of selected track (-1 if none)
+  - `Tracks`: Array of tracks in the playlist
+  - `PluginInfo`: Additional plugin data
+</ParamField>
+
+### Search Results
+
+Multiple tracks matching a search query:
+
+```go
+result, err := node.LoadTracks(ctx, "ytsearch:minecraft music")
+if result.LoadType == lavalink.LoadTypeSearch {
+    tracks := result.Data.(lavalink.Search)
+    fmt.Printf("Found %d tracks:\n", len(tracks))
+    for i, track := range tracks {
+        fmt.Printf("%d. %s by %s\n", i+1, track.Info.Title, track.Info.Author)
+    }
+}
+```
+
+<ParamField path="LoadTypeSearch" type="LoadType">
+  Search completed with results
+  
+  **Data Type**: `lavalink.Search` (alias for `[]lavalink.Track`)
+</ParamField>
+
+### Empty
+
+No tracks found:
+
+```go
+result, err := node.LoadTracks(ctx, "ytsearch:asdfjkl;qweriop")
+if result.LoadType == lavalink.LoadTypeEmpty {
+    fmt.Println("No tracks found")
+}
+```
+
+<ParamField path="LoadTypeEmpty" type="LoadType">
+  No tracks matched the query
+  
+  **Data Type**: `lavalink.Empty` (empty struct)
+</ParamField>
+
+### Error
+
+Loading failed:
+
+```go
+result, err := node.LoadTracks(ctx, "https://invalid.url")
+if result.LoadType == lavalink.LoadTypeError {
+    exception := result.Data.(lavalink.Exception)
+    fmt.Printf("Load failed: %s (%s)\n", exception.Message, exception.Severity)
+}
+```
+
+<ParamField path="LoadTypeError" type="LoadType">
+  Track loading failed
+  
+  **Data Type**: `lavalink.Exception`
+  
+  **Exception Fields**:
+  - `Message`: Error message
+  - `Severity`: Error severity ("common", "suspicious", "fault")
+  - `Cause`: Root cause description
+  - `CauseStackTrace`: Full stack trace
+</ParamField>
+
+## Result Handler
+
+Use a handler for cleaner result processing:
+
+```go
+type MyHandler struct{}
+
+func (h *MyHandler) TrackLoaded(track lavalink.Track) {
+    fmt.Println("Track:", track.Info.Title)
+}
+
+func (h *MyHandler) PlaylistLoaded(playlist lavalink.Playlist) {
+    fmt.Printf("Playlist: %s (%d tracks)\n", playlist.Info.Name, len(playlist.Tracks))
+}
+
+func (h *MyHandler) SearchResultLoaded(tracks []lavalink.Track) {
+    fmt.Printf("Found %d tracks\n", len(tracks))
+}
+
+func (h *MyHandler) NoMatches() {
+    fmt.Println("No tracks found")
+}
+
+func (h *MyHandler) LoadFailed(err error) {
+    fmt.Println("Failed to load:", err)
+}
+
+// Use the handler
+node.LoadTracksHandler(ctx, "ytsearch:music", &MyHandler{})
+```
+
+Or use a functional handler:
+
+```go
+handler := disgolink.NewResultHandler(
+    func(track lavalink.Track) {
+        player.Update(ctx, lavalink.WithTrack(track))
+    },
+    func(playlist lavalink.Playlist) {
+        player.Update(ctx, lavalink.WithTrack(playlist.Tracks[0]))
+    },
+    func(tracks []lavalink.Track) {
+        player.Update(ctx, lavalink.WithTrack(tracks[0]))
+    },
+    func() {
+        fmt.Println("No matches")
+    },
+    func(err error) {
+        fmt.Println("Error:", err)
+    },
+)
+
+node.LoadTracksHandler(ctx, identifier, handler)
+```
+
+## Track Encoding/Decoding
+
+### Decoding Tracks
+
+Decode track strings back to Track objects:
+
+```go
+// Decode single track
+track, err := node.DecodeTrack(ctx, encodedString)
+if err != nil {
+    return err
+}
+
+// Decode multiple tracks
+encodedTracks := []string{track1Encoded, track2Encoded, track3Encoded}
+tracks, err := node.DecodeTracks(ctx, encodedTracks)
+if err != nil {
+    return err
+}
+```
+
+<ParamField path="DecodeTrack" type="func(context.Context, string) (*lavalink.Track, error)">
+  Decode a single base64-encoded track string
+</ParamField>
+
+<ParamField path="DecodeTracks" type="func(context.Context, []string) ([]lavalink.Track, error)">
+  Decode multiple base64-encoded track strings
+</ParamField>
+
+<Info>
+Track encoding is handled automatically by Lavalink. You typically only need decoding when retrieving stored track data.
+</Info>
+
+## User Data
+
+Attach custom data to tracks:
+
+```go
+type MyData struct {
+    RequestedBy string `json:"requested_by"`
+    QueuedAt    int64  `json:"queued_at"`
+}
+
+// Add user data
+trackWithData, err := track.WithUserData(MyData{
+    RequestedBy: "User#1234",
+    QueuedAt:    time.Now().Unix(),
+})
+if err != nil {
+    return err
+}
+
+// Play track with user data
+err = player.Update(ctx, lavalink.WithTrack(trackWithData))
+```
+
+<ParamField path="WithUserData" type="func(any) (Track, error)">
+  Create a copy of the track with custom user data (must be JSON-serializable)
+</ParamField>
+
+Retrieve user data:
+
+```go
+if track.UserData != nil {
+    var data MyData
+    if err := json.Unmarshal(track.UserData, &data); err == nil {
+        fmt.Printf("Requested by: %s\n", data.RequestedBy)
+    }
+}
+```
+
+<Warning>
+User data must be JSON-serializable. It's marshaled when attached and must be unmarshaled when retrieved.
+</Warning>
+
+## Database Storage
+
+Tracks implement `database/sql` interfaces for easy storage:
+
+```go
+// Track implements driver.Valuer and sql.Scanner
+var track lavalink.Track
+
+// Store in database
+_, err := db.Exec("INSERT INTO tracks (id, data) VALUES (?, ?)", id, track)
+
+// Retrieve from database
+var stored lavalink.Track
+err := db.QueryRow("SELECT data FROM tracks WHERE id = ?", id).Scan(&stored)
+```
+
+<Info>
+Tracks are automatically marshaled to/from JSON when using database operations.
+</Info>

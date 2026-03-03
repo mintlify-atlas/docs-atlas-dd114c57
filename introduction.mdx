@@ -1,0 +1,138 @@
+---
+title: Introduction
+description: A powerful Golang Lavalink client for building Discord music bots with Lavalink 4.0+ support
+---
+
+# Welcome to DisGoLink
+
+DisGoLink is a modern [Lavalink](https://github.com/freyacodes/Lavalink) client written in [Golang](https://golang.org/) that enables you to build powerful Discord music bots with ease. It provides full support for Lavalink 4.0+ and the new plugin ecosystem.
+
+<CardGroup cols={2}>
+  <Card
+    title="Quickstart"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Get up and running with DisGoLink in minutes
+  </Card>
+  <Card
+    title="Installation"
+    icon="download"
+    href="/installation"
+  >
+    Install DisGoLink and set up your development environment
+  </Card>
+  <Card
+    title="API Reference"
+    icon="code"
+    href="https://pkg.go.dev/github.com/disgoorg/disgolink/v3"
+  >
+    Explore the complete API documentation
+  </Card>
+  <Card
+    title="Discord Support"
+    icon="discord"
+    href="https://discord.gg/NFmvZYmZMF"
+  >
+    Join our community for help and discussions
+  </Card>
+</CardGroup>
+
+## What is DisGoLink?
+
+DisGoLink is a feature-rich Lavalink client that handles all the complexity of integrating Lavalink with your Discord bot. It manages WebSocket connections, audio player state, voice events, and provides an intuitive API for playing audio in Discord voice channels.
+
+Whether you're building a simple music bot or a complex audio application, DisGoLink provides the tools you need to deliver high-quality audio experiences to your Discord users.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Lavalink 4.0+ Support" icon="circle-check">
+    Full compatibility with the latest Lavalink features and APIs
+  </Card>
+  <Card title="Plugin System" icon="puzzle-piece">
+    Extend functionality with official and community plugins
+  </Card>
+  <Card title="Event-Driven Architecture" icon="bolt">
+    React to player events, track changes, and voice state updates
+  </Card>
+  <Card title="Multi-Node Support" icon="server">
+    Connect to multiple Lavalink nodes with automatic best-node selection
+  </Card>
+  <Card title="Session Resuming" icon="rotate">
+    Resume playback after restarts without losing state
+  </Card>
+  <Card title="Type-Safe API" icon="shield">
+    Leverage Go's type system for safer, more maintainable code
+  </Card>
+</CardGroup>
+
+## Why DisGoLink?
+
+### Built for Go Developers
+
+DisGoLink is designed from the ground up for the Go ecosystem, providing idiomatic Go interfaces and patterns. It uses the [Disgo Snowflake](https://github.com/disgoorg/snowflake) package for type-safe Discord ID handling.
+
+### Discord Library Compatibility
+
+While DisGoLink works best with [DisGo](https://github.com/disgoorg/disgo), it's compatible with other Discord libraries:
+
+- **DisGo** - `type ID uint64` (recommended)
+- **DiscordGo** - `string` IDs
+- **Arikawa** - `type Snowflake uint64`
+- **Disgord** - `type Snowflake uint64`
+
+<Note>
+DisGoLink uses the Disgo Snowflake package. When using other Discord libraries, you may need to convert between ID types.
+</Note>
+
+### Rich Plugin Ecosystem
+
+Extend DisGoLink with official plugins:
+
+- **[SponsorBlock](https://github.com/disgoorg/sponsorblock-plugin)** - Skip sponsored segments in videos
+- **[LavaQueue](https://github.com/disgoorg/lavaqueue-plugin)** - Advanced queue management
+- **[LavaSrc](https://github.com/disgoorg/lavasrc-plugin)** - Additional audio sources
+- **[LavaLyrics](https://github.com/disgoorg/lavalyrics-plugin)** - Synchronized lyrics support
+- **[LavaSearch](https://github.com/disgoorg/lavasearch-plugin)** - Enhanced search capabilities
+
+## Use Cases
+
+DisGoLink is perfect for building:
+
+- **Music Bots** - Play music from YouTube, Spotify, SoundCloud, and more
+- **Radio Bots** - Stream live radio or podcasts to voice channels
+- **Audio Notification Systems** - Play alerts and announcements
+- **Voice Channel Utilities** - Custom audio experiences for communities
+- **DJ Bots** - Advanced audio mixing and effects
+
+## Event-Driven Design
+
+DisGoLink provides comprehensive event handlers for all Lavalink events:
+
+- `PlayerUpdateMessage` - Periodic player state updates (default: every 5 seconds)
+- `PlayerPause` / `PlayerResume` - Pause state changes
+- `TrackStart` / `TrackEnd` - Track lifecycle events
+- `TrackException` - Error handling for problematic tracks
+- `TrackStuck` - Detection of stuck playback
+- `WebSocketClosed` - Voice connection monitoring
+
+## Architecture
+
+DisGoLink is organized into two main packages:
+
+### `disgolink` Package
+
+The high-level client interface for managing nodes, players, and events. This is your primary interaction point with the library.
+
+### `lavalink` Package
+
+Low-level Lavalink protocol types and messages. These types represent the raw Lavalink API structures.
+
+## Getting Started
+
+Ready to build your Discord music bot? Head over to the [Installation](/installation) guide to set up DisGoLink, or jump straight into the [Quickstart](/quickstart) to see it in action.
+
+<Card title="Next: Installation" icon="arrow-right" href="/installation">
+  Install DisGoLink and prepare your development environment
+</Card>

@@ -1,0 +1,309 @@
+---
+title: Track
+description: Track information and metadata
+---
+
+## Track
+
+Represents an audio track in Lavalink.
+
+```go
+type Track struct {
+    Encoded    string    `json:"encoded"`
+    Info       TrackInfo `json:"info"`
+    PluginInfo RawData   `json:"pluginInfo"`
+    UserData   RawData   `json:"userData"`
+}
+```
+
+<ResponseField name="Encoded" type="string" required>
+  Base64-encoded track data that uniquely identifies the track. This is required when playing a track.
+</ResponseField>
+
+<ResponseField name="Info" type="TrackInfo" required>
+  Detailed information about the track (see below)
+</ResponseField>
+
+<ResponseField name="PluginInfo" type="RawData">
+  Additional information provided by Lavalink plugins. This is raw JSON data that can be unmarshaled into custom types.
+</ResponseField>
+
+<ResponseField name="UserData" type="RawData">
+  Custom user data that can be attached to the track. This is raw JSON data that persists with the track.
+</ResponseField>
+
+## TrackInfo
+
+Detailed metadata about a track.
+
+<ResponseField name="Identifier" type="string" required>
+  The track identifier, typically:
+  - YouTube: Video ID (e.g., `dQw4w9WgXcQ`)
+  - Soundcloud: Track ID
+  - Spotify: Track URI
+</ResponseField>
+
+<ResponseField name="Author" type="string" required>
+  The track author or artist name
+</ResponseField>
+
+<ResponseField name="Length" type="Duration" required>
+  Track length in milliseconds. `0` for live streams.
+</ResponseField>
+
+<ResponseField name="IsStream" type="bool" required>
+  Whether this track is a live stream. Live streams have a length of `0`.
+</ResponseField>
+
+<ResponseField name="Title" type="string" required>
+  The track title
+</ResponseField>
+
+<ResponseField name="URI" type="*string">
+  The track URI/URL (nullable). May be `null` for some sources.
+</ResponseField>
+
+<ResponseField name="SourceName" type="string" required>
+  The name of the source this track was loaded from:
+  - `youtube`
+  - `soundcloud`
+  - `spotify`
+  - `bandcamp`
+  - `twitch`
+  - `vimeo`
+  - `http`
+  - Custom sources from plugins
+</ResponseField>
+
+<ResponseField name="Position" type="Duration" required>
+  Current playback position in milliseconds. Typically `0` when first loaded.
+</ResponseField>
+
+<ResponseField name="ArtworkURL" type="*string">
+  URL to the track's artwork/thumbnail (nullable)
+</ResponseField>
+
+<ResponseField name="ISRC" type="*string">
+  International Standard Recording Code (nullable). Not available for all tracks.
+</ResponseField>
+
+## Example
+
+```json
+{
+  "encoded": "QAAAjQIAJVJpY2sgQXN0bGV5IC0gTmV2ZXIgR29ubmEgR2l2ZSBZb3UgVXA...",
+  "info": {
+    "identifier": "dQw4w9WgXcQ",
+    "title": "Rick Astley - Never Gonna Give You Up",
+    "author": "Rick Astley",
+    "length": 213000,
+    "isStream": false,
+    "uri": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    "sourceName": "youtube",
+    "position": 0,
+    "artworkUrl": "https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg",
+    "isrc": null
+  },
+  "pluginInfo": {},
+  "userData": {}
+}
+```
+
+## Duration Type
+
+The `Duration` type represents time in milliseconds.
+
+```go
+type Duration int64
+```
+
+### Constants
+
+```go
+const (
+    Millisecond Duration = 1
+    Second               = 1000 * Millisecond
+    Minute               = 60 * Second
+    Hour                 = 60 * Minute
+    Day                  = 24 * Hour
+)
+```
+
+### Methods
+
+```go
+func (d Duration) Milliseconds() int64     // Total milliseconds
+func (d Duration) MillisecondsPart() int64 // Milliseconds component (0-999)
+func (d Duration) Seconds() int64          // Total seconds
+func (d Duration) SecondsPart() int64      // Seconds component (0-59)
+func (d Duration) Minutes() int64          // Total minutes
+func (d Duration) MinutesPart() int64      // Minutes component (0-59)
+func (d Duration) Hours() int64            // Total hours
+func (d Duration) HoursPart() int64        // Hours component (0-23)
+func (d Duration) Days() int64             // Total days
+func (d Duration) String() string          // Human-readable format (e.g., "3m30s")
+```
+
+### Example Usage
+
+```go
+track := getTrack()
+
+fmt.Printf("Track: %s - %s\n", track.Info.Author, track.Info.Title)
+fmt.Printf("Length: %s\n", track.Info.Length.String())
+fmt.Printf("Minutes: %d\n", track.Info.Length.Minutes())
+
+// Output:
+// Track: Rick Astley - Never Gonna Give You Up
+// Length: 3m33s
+// Minutes: 3
+```
+
+## RawData Type
+
+The `RawData` type is an alias for `json.RawMessage` with helper methods.
+
+```go
+type RawData json.RawMessage
+```
+
+### Methods
+
+```go
+func (p RawData) String() string         // Convert to string
+func (p RawData) Unmarshal(v any) error  // Unmarshal into custom type
+```
+
+### Usage with PluginInfo
+
+```go
+type MyPluginInfo struct {
+    CustomField string `json:"customField"`
+    Value       int    `json:"value"`
+}
+
+var pluginData MyPluginInfo
+if err := track.PluginInfo.Unmarshal(&pluginData); err != nil {
+    // Handle error
+}
+
+fmt.Printf("Custom field: %s\n", pluginData.CustomField)
+```
+
+## Working with UserData
+
+You can attach custom data to tracks using the `WithUserData` method:
+
+```go
+type QueueMetadata struct {
+    RequestedBy string `json:"requestedBy"`
+    QueuedAt    int64  `json:"queuedAt"`
+}
+
+metadata := QueueMetadata{
+    RequestedBy: "User#1234",
+    QueuedAt:    time.Now().Unix(),
+}
+
+track, err := track.WithUserData(metadata)
+if err != nil {
+    // Handle error
+}
+
+// Later, retrieve the data
+var retrievedMetadata QueueMetadata
+if err := track.UserData.Unmarshal(&retrievedMetadata); err != nil {
+    // Handle error
+}
+
+fmt.Printf("Requested by: %s\n", retrievedMetadata.RequestedBy)
+```
+
+## Database Support
+
+The `Track` type implements `database/sql` interfaces for storing tracks in databases:
+
+```go
+var _ driver.Valuer = (*Track)(nil)
+var _ sql.Scanner   = (*Track)(nil)
+```
+
+### Storing in Database
+
+```go
+// Insert track
+_, err := db.Exec(
+    "INSERT INTO tracks (guild_id, track_data) VALUES (?, ?)",
+    guildID,
+    track,
+)
+
+// Retrieve track
+var track lavalink.Track
+err := db.QueryRow(
+    "SELECT track_data FROM tracks WHERE guild_id = ?",
+    guildID,
+).Scan(&track)
+```
+
+## Playing Tracks
+
+To play a track, use the player update mechanism:
+
+```go
+err := client.UpdatePlayer(
+    context.TODO(),
+    guildID,
+    lavalink.WithTrack(track),
+)
+```
+
+Or with just the encoded data:
+
+```go
+err := client.UpdatePlayer(
+    context.TODO(),
+    guildID,
+    lavalink.WithEncodedTrack(track.Encoded),
+)
+```
+
+## Track Sources
+
+Lavalink supports multiple audio sources:
+
+- **YouTube** - `ytsearch:query` or direct URL
+- **YouTube Music** - `ytmsearch:query`
+- **SoundCloud** - `scsearch:query` or direct URL
+- **Spotify** - Requires plugin, use Spotify URIs
+- **Bandcamp** - Direct URL
+- **Twitch** - Direct URL to stream
+- **Vimeo** - Direct URL
+- **HTTP** - Direct URL to audio file
+- **Local files** - File path (if enabled)
+
+### Search Prefixes
+
+```go
+const (
+    YouTubeSearch      = "ytsearch:"      // YouTube search
+    YouTubeMusicSearch = "ytmsearch:"     // YouTube Music search
+    SoundCloudSearch   = "scsearch:"      // SoundCloud search
+)
+```
+
+### Example Searches
+
+```go
+// YouTube search
+result, _ := client.LoadTracks(ctx, "ytsearch:never gonna give you up")
+
+// Direct YouTube URL
+result, _ := client.LoadTracks(ctx, "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+
+// SoundCloud search
+result, _ := client.LoadTracks(ctx, "scsearch:darude sandstorm")
+
+// Spotify (requires plugin)
+result, _ := client.LoadTracks(ctx, "https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT")
+```
