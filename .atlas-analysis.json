@@ -1,0 +1,110 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "DisGoLink",
+  "projectDescription": "A Golang Lavalink Client for building Discord music bots with support for Lavalink 4.0+ and plugins",
+  "theme": "aspen",
+  "primaryColor": "#5865F2",
+  "lightColor": "#7289DA",
+  "darkColor": "#4752C4",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "core-concepts/client",
+              "core-concepts/nodes",
+              "core-concepts/players",
+              "core-concepts/tracks",
+              "core-concepts/events"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/setup-lavalink",
+              "guides/loading-tracks",
+              "guides/playing-audio",
+              "guides/filters",
+              "guides/plugins",
+              "guides/error-handling"
+            ]
+          },
+          {
+            "group": "Integration",
+            "pages": [
+              "integration/disgo",
+              "integration/discordgo",
+              "integration/other-libraries"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "disgolink",
+            "pages": [
+              "api/disgolink/client",
+              "api/disgolink/node",
+              "api/disgolink/player",
+              "api/disgolink/rest-client",
+              "api/disgolink/event-listener",
+              "api/disgolink/plugin"
+            ]
+          },
+          {
+            "group": "lavalink",
+            "pages": [
+              "api/lavalink/messages",
+              "api/lavalink/events",
+              "api/lavalink/filters",
+              "api/lavalink/load-result",
+              "api/lavalink/track",
+              "api/lavalink/player-update"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Lavalink 4.0+ support with full API coverage",
+    "Plugin system for extending functionality",
+    "Event-driven architecture for player updates",
+    "Audio filters and effects (equalizer, timescale, tremolo, etc.)",
+    "Session resuming and reconnection handling",
+    "Load balancing across multiple Lavalink nodes",
+    "Track loading with support for search, playlists, and direct URLs",
+    "Voice state management and WebSocket handling"
+  ],
+  "publicApiSurface": [
+    "disgolink.New() - Create a new Lavalink client",
+    "Client.AddNode() - Add a Lavalink node",
+    "Client.Player() - Get or create a player for a guild",
+    "Client.BestNode() - Get the best available node",
+    "Node.LoadTracks() - Load tracks from an identifier",
+    "Node.LoadTracksHandler() - Load tracks with result handler",
+    "Player.Update() - Update player state (track, volume, filters, etc.)",
+    "Player.Destroy() - Destroy a player",
+    "WithListenerFunc() - Add event listeners",
+    "WithPlugins() - Register plugins",
+    "lavalink.WithTrack() - Set the current track",
+    "lavalink.WithVolume() - Set player volume",
+    "lavalink.WithPaused() - Pause/resume playback",
+    "lavalink.WithFilters() - Apply audio filters",
+    "OnVoiceStateUpdate() - Handle Discord voice state updates",
+    "OnVoiceServerUpdate() - Handle Discord voice server updates"
+  ]
+}
